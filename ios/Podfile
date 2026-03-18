@@ -3,8 +3,18 @@ platform :ios, '15.0'
 target 'Runner' do
   use_frameworks!
   use_modular_headers!
+  
+  # השורות האלו מכריחות את Xcode למצוא את cloud_firestore
+  pod 'FirebaseFirestore', :project_name => 'cloud_firestore'
+  pod 'FirebaseCore', :project_name => 'firebase_core'
+  pod 'FirebaseCoreInternal', :project_name => 'firebase_core'
+end
 
-  # במקום לקרוא לקובץ חיצוני, אנחנו פשוט אומרים לו להשתמש ב-Pods
-  pod 'Firebase/Firestore'
-  pod 'Firebase/Core'
+# קוד טכני שמתקן הגדרות בנייה בשרת
+post_install do |installer|
+  installer.pods_project.targets.each do |target|
+    target.build_configurations.each do |config|
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
+    end
+  end
 end
