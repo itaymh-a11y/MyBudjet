@@ -1,1 +1,12 @@
 platform :ios, '15.0'
+
+# קוד שמאפשר לפלאטר לנהל את התוספים שלו
+install! 'cocoapods', :deterministic_uuids => false
+
+target 'Runner' do
+  use_frameworks!
+  use_modular_headers!
+
+  # השורה הזו היא הקסם - היא מושכת את כל התוספים (כמו Firebase) אוטומטית
+  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+end
