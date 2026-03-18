@@ -1,12 +1,10 @@
-# השורה הזו היא החשובה ביותר - היא טוענת את ההגדרות של פלאטר
-load File.join(File.dirname(File.realpath(__FILE__)), 'Flutter', 'podhelper.rb')
-
 platform :ios, '15.0'
 
 target 'Runner' do
   use_frameworks!
   use_modular_headers!
 
-  # פקודה שמתקינה אוטומטית את כל התוספים (כמו פיירבייס)
-  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+  # במקום לקרוא לקובץ חיצוני, אנחנו פשוט אומרים לו להשתמש ב-Pods
+  pod 'Firebase/Firestore'
+  pod 'Firebase/Core'
 end
