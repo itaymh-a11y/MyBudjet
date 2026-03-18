@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "130435474815",
+    "project_id": "mybudjet-e75a2",
+    "storage_bucket": "mybudjet-e75a2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:130435474815:android:df8a93bbab94ce5a1ce64a",
+        "android_client_info": {
+          "package_name": "com.example.my_budjet"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBhe1uLbM3NJ6ikDGFOYnLtA_nJU5Y_Pwo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
