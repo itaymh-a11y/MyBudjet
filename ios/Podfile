@@ -1,12 +1,12 @@
-platform :ios, '15.0'
+# השורה הזו היא החשובה ביותר - היא טוענת את ההגדרות של פלאטר
+load File.join(File.dirname(File.realpath(__FILE__)), 'Flutter', 'podhelper.rb')
 
-# קוד שמאפשר לפלאטר לנהל את התוספים שלו
-install! 'cocoapods', :deterministic_uuids => false
+platform :ios, '15.0'
 
 target 'Runner' do
   use_frameworks!
   use_modular_headers!
 
-  # השורה הזו היא הקסם - היא מושכת את כל התוספים (כמו Firebase) אוטומטית
+  # פקודה שמתקינה אוטומטית את כל התוספים (כמו פיירבייס)
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
 end
