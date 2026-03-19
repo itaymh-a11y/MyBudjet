@@ -70,6 +70,42 @@ class _PensionScreenState extends ConsumerState<PensionScreen> {
     });
   }
 
+  Future<void> _openChartFullscreen() async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        return Dialog.fullscreen(
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      IconButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: const Icon(Icons.close),
+                        tooltip: 'סגור',
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'השוואת חודשים – תצוגה מלאה',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  const Expanded(child: _PensionBarChart(compact: false)),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   static const _monthNames = [
     '', 'ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני',
     'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר',
@@ -201,16 +237,25 @@ class _PensionScreenState extends ConsumerState<PensionScreen> {
             ),
             const SizedBox(height: 24),
             Expanded(
-              child: Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: const [
-                      Text('השוואת חודשים – ברוטו, הוצאות, נטו'),
-                      SizedBox(height: 8),
-                      Expanded(child: _PensionBarChart()),
-                    ],
+              child: InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: _openChartFullscreen,
+                child: Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: const [
+                        Text('השוואת חודשים – ברוטו, הוצאות, נטו'),
+                        SizedBox(height: 4),
+                        Text(
+                          'לחץ על הגרף לתצוגה מלאה',
+                          style: TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
+                        SizedBox(height: 8),
+                        Expanded(child: _PensionBarChart(compact: true)),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -258,7 +303,9 @@ class _PensionScreenState extends ConsumerState<PensionScreen> {
 }
 
 class _PensionBarChart extends ConsumerWidget {
-  const _PensionBarChart();
+  const _PensionBarChart({required this.compact});
+
+  final bool compact;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -306,7 +353,7 @@ class _PensionBarChart extends ConsumerWidget {
                       padding: const EdgeInsets.only(top: 4),
                       child: Text(
                         '${m.month}/${m.year % 100}',
-                        style: const TextStyle(fontSize: 10),
+                        style: TextStyle(fontSize: compact ? 10 : 12),
                       ),
                     );
                   },
@@ -322,19 +369,19 @@ class _PensionBarChart extends ConsumerWidget {
                   barRods: [
                     BarChartRodData(
                       toY: months[i].grossIncome,
-                      width: 6,
+                      width: compact ? 6 : 10,
                       color: Colors.blue,
                     ),
                     BarChartRodData(
                       toY: months[i].totalExpenses,
-                      width: 6,
+                      width: compact ? 6 : 10,
                       color: Colors.orange,
                     ),
                     BarChartRodData(
                       toY: months[i].netProfit >= 0
                           ? months[i].netProfit
                           : -months[i].netProfit,
-                      width: 6,
+                      width: compact ? 6 : 10,
                       color:
                           months[i].netProfit >= 0 ? Colors.green : Colors.red,
                     ),
