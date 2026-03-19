@@ -81,7 +81,7 @@ class HomeTab extends ConsumerWidget {
                               value: (summary.totalSpent / summary.budget)
                                   .clamp(0.0, 2.0),
                               minHeight: 10,
-                              backgroundColor: theme.colorScheme.surfaceVariant
+                              backgroundColor: theme.colorScheme.surfaceContainerHighest
                                   .withOpacity(0.3),
                               valueColor:
                                   AlwaysStoppedAnimation<Color>(barColor),

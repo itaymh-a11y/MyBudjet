@@ -25,7 +25,7 @@ class PersonalCategoriesScreen extends ConsumerWidget {
 
           return ListView.separated(
             itemCount: categories.length,
-            separatorBuilder: (_, __) => const Divider(height: 1),
+            separatorBuilder: (_, _) => const Divider(height: 1),
             itemBuilder: (context, index) {
               final category = categories[index];
               return ListTile(
