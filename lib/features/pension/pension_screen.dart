@@ -296,9 +296,20 @@ class _PensionScreenState extends ConsumerState<PensionScreen> {
       netProfit: net,
     );
     await repo.upsertMonth(auth.uid, month);
+
+    final savingsRepo = ref.read(savingsRepositoryProvider);
+    await savingsRepo.syncFromPensionNet(
+      userId: auth.uid,
+      year: key.year,
+      month: key.month,
+      netProfit: net,
+    );
+
     ref.invalidate(pensionMonthForProvider(key));
     ref.invalidate(currentPensionMonthProvider);
     ref.invalidate(recentPensionMonthsProvider(12));
+    ref.invalidate(savingsMonthEntryProvider(key));
+    ref.invalidate(recentSavingsMonthsProvider(48));
   }
 }
 

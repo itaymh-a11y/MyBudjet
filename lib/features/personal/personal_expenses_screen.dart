@@ -4,8 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/models/personal_models.dart';
 import '../../core/repositories/providers.dart';
 import 'personal_categories_screen.dart';
+import 'personal_cycle_history_screen.dart';
 import 'personal_stats_screen.dart';
 import 'recurring_expenses_screen.dart';
+import 'personal_ideal_distribution_screen.dart';
 
 class PersonalExpensesScreen extends ConsumerWidget {
   const PersonalExpensesScreen({super.key});
@@ -35,6 +37,7 @@ class PersonalExpensesScreen extends ConsumerWidget {
           ref.invalidate(currentPersonalCycleDocProvider);
           ref.invalidate(personalExpensesForCurrentCycleProvider);
           ref.invalidate(personalCycleSummaryProvider);
+          ref.invalidate(personalIdealBudgetProvider);
         });
       });
     });
@@ -44,12 +47,34 @@ class PersonalExpensesScreen extends ConsumerWidget {
         title: const Text('הוצאות אישיות'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.history),
+            tooltip: 'היסטוריית מחזורים',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const PersonalCycleHistoryScreen(),
+                ),
+              );
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.repeat),
             tooltip: 'הוראות קבע',
             onPressed: () {
               Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (_) => const RecurringExpensesScreen(),
+                ),
+              );
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.insights_outlined),
+            tooltip: 'התפלגות אידיאלית',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const PersonalIdealDistributionScreen(),
                 ),
               );
             },
@@ -125,8 +150,8 @@ class PersonalExpensesScreen extends ConsumerWidget {
                                 .clamp(0, 2)
                             : null,
                         minHeight: 10,
-                        backgroundColor:
-                            theme.colorScheme.surfaceVariant.withOpacity(0.3),
+                        backgroundColor: theme.colorScheme.surfaceContainerHighest
+                            .withOpacity(0.3),
                         valueColor: AlwaysStoppedAnimation<Color>(barColor),
                       ),
                     ),
@@ -170,12 +195,13 @@ class PersonalExpensesScreen extends ConsumerWidget {
                         ref
                           ..invalidate(
                               personalExpensesForCurrentCycleProvider)
-                          ..invalidate(personalCycleSummaryProvider);
+                          ..invalidate(personalCycleSummaryProvider)
+                          ..invalidate(personalIdealBudgetProvider);
                       },
                       categoryName: null,
                     );
                   },
-                  separatorBuilder: (_, __) => const Divider(),
+                  separatorBuilder: (_, _) => const Divider(),
                   itemCount: expenses.length,
                 );
               },
@@ -225,7 +251,8 @@ class PersonalExpensesScreen extends ConsumerWidget {
     // ריענון רשימת ההוצאות לאחר סגירת הטופס.
     ref
       ..invalidate(personalExpensesForCurrentCycleProvider)
-      ..invalidate(personalCycleSummaryProvider);
+      ..invalidate(personalCycleSummaryProvider)
+      ..invalidate(personalIdealBudgetProvider);
   }
 
   Future<void> _openBudgetDialog(BuildContext context, WidgetRef ref) async {
@@ -270,7 +297,8 @@ class PersonalExpensesScreen extends ConsumerWidget {
               await repo.upsertCycle(auth.uid, updated);
               ref
                 ..invalidate(currentPersonalCycleDocProvider)
-                ..invalidate(personalCycleSummaryProvider);
+                ..invalidate(personalCycleSummaryProvider)
+                ..invalidate(personalIdealBudgetProvider);
               if (context.mounted) Navigator.of(context).pop();
             },
             child: const Text('שמור'),
@@ -492,7 +520,7 @@ class _AddExpenseSheetState extends ConsumerState<_AddExpenseSheet> {
                     _selectedCategoryId ??= widget.existingCategoryId ??
                         categories.first.id;
                     return DropdownButtonFormField<String>(
-                      value: _selectedCategoryId,
+                      initialValue: _selectedCategoryId,
                       items: categories
                           .map(
                             (c) => DropdownMenuItem(

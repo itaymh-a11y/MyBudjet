@@ -66,3 +66,37 @@ String previousPersonalCycleId(String cycleId) {
   return '$year-${month.toString().padLeft(2, '0')}-10';
 }
 
+/// מחזיר את טווח המחזור לפי מזהה שמור ב-Firestore (למשל `2026-03-10`).
+PersonalCycleRange? personalCycleRangeFromId(String cycleId) {
+  final parts = cycleId.split('-');
+  if (parts.length < 3) return null;
+  final year = int.tryParse(parts[0]);
+  final month = int.tryParse(parts[1]);
+  if (year == null || month == null || month < 1 || month > 12) {
+    return null;
+  }
+  final start = DateTime(year, month, 10);
+  final endMonth = month == 12 ? 1 : month + 1;
+  final endYear = month == 12 ? year + 1 : year;
+  final end = DateTime(endYear, endMonth, 9, 23, 59, 59);
+  return PersonalCycleRange(start: start, end: end, id: cycleId);
+}
+
+/// רשימת מחזורים אחורה מהתאריך הנתון (ללא כפילויות), מהחדש לישן.
+List<PersonalCycleRange> recentPersonalCycleRanges({
+  DateTime? from,
+  int count = 36,
+}) {
+  final List<PersonalCycleRange> out = [];
+  final seen = <String>{};
+  var cursor = from ?? DateTime.now();
+  for (var i = 0; i < count; i++) {
+    final range = currentPersonalCycle(cursor);
+    if (seen.add(range.id)) {
+      out.add(range);
+    }
+    cursor = range.start.subtract(const Duration(days: 1));
+  }
+  return out;
+}
+

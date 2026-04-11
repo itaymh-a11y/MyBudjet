@@ -9,15 +9,19 @@ class HomeTab extends ConsumerWidget {
     super.key,
     required this.onGoToPersonal,
     required this.onGoToPension,
+    required this.onGoToSavings,
   });
 
   final VoidCallback onGoToPersonal;
   final VoidCallback onGoToPension;
+  final VoidCallback onGoToSavings;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final summaryAsync = ref.watch(personalCycleSummaryProvider);
     final pensionAsync = ref.watch(currentPensionMonthProvider);
+    final savingsKey = ref.watch(currentPensionMonthKeyProvider);
+    final savingsMonthAsync = ref.watch(savingsMonthEntryProvider(savingsKey));
     final cycle = ref.watch(currentPersonalCycleProvider);
 
     return SingleChildScrollView(
@@ -194,6 +198,78 @@ class HomeTab extends ConsumerWidget {
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Text('שגיאה: $e'),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          savingsMonthAsync.when(
+            data: (entry) {
+              final theme = Theme.of(context);
+              return Card(
+                color: Colors.amber.shade50,
+                child: InkWell(
+                  onTap: onGoToSavings,
+                  borderRadius: BorderRadius.circular(12),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.savings_outlined,
+                                color: Colors.amber.shade900),
+                            const SizedBox(width: 8),
+                            Text(
+                              'תוכנית חיסכון – חודש נוכחי',
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                color: Colors.amber.shade900,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        if (entry != null) ...[
+                          Text(
+                            'יעד הפקדה: ${entry.targetAmount.toStringAsFixed(0)} ₪',
+                            style: theme.textTheme.titleSmall,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            entry.deposited
+                                ? 'סומן: בוצעה הפקדה'
+                                : 'טרם סומן ביצוע הפקדה',
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        ] else
+                          Text(
+                            'לאחר שמירת נתונים בפנסיון יחושב היעד אוטומטית',
+                            style: theme.textTheme.bodyMedium,
+                          ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'לחץ למעבר לתוכנית החיסכון',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: Colors.amber.shade900,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+            loading: () => const Card(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Center(child: CircularProgressIndicator()),
+              ),
+            ),
+            error: (e, _) => Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text('שגיאה בחיסכון: $e'),
               ),
             ),
           ),

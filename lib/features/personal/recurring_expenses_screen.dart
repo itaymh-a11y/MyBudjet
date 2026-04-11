@@ -91,7 +91,7 @@ class RecurringExpensesScreen extends ConsumerWidget {
                 child: ListView.separated(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   itemCount: templates.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  separatorBuilder: (_, _) => const Divider(height: 1),
                   itemBuilder: (context, index) {
                     final t = templates[index];
                     return categoriesAsync.when(
@@ -124,7 +124,7 @@ class RecurringExpensesScreen extends ConsumerWidget {
                         title: Text(t.title),
                         subtitle: Text('${t.amount.toStringAsFixed(0)} ₪'),
                       ),
-                      error: (_, __) => ListTile(
+                      error: (_, _) => ListTile(
                         title: Text(t.title),
                         subtitle: Text('${t.amount.toStringAsFixed(0)} ₪'),
                       ),
@@ -192,7 +192,7 @@ class RecurringExpensesScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
-                    value: categoryId,
+                    initialValue: categoryId,
                     items: categories
                         .map((c) => DropdownMenuItem(
                               value: c.id,
@@ -254,6 +254,7 @@ class RecurringExpensesScreen extends ConsumerWidget {
       await repo.updateRecurringTemplate(user.uid, template);
     }
     ref.invalidate(recurringTemplatesProvider);
+    ref.invalidate(personalIdealBudgetProvider);
     ref.read(lastRecurringAppliedCycleIdProvider.notifier).set(null);
   }
 
@@ -276,6 +277,7 @@ class RecurringExpensesScreen extends ConsumerWidget {
     ref.invalidate(currentPersonalCycleDocProvider);
     ref.invalidate(personalExpensesForCurrentCycleProvider);
     ref.invalidate(personalCycleSummaryProvider);
+    ref.invalidate(personalIdealBudgetProvider);
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -316,6 +318,7 @@ class RecurringExpensesScreen extends ConsumerWidget {
           t.id,
         );
     ref.invalidate(recurringTemplatesProvider);
+    ref.invalidate(personalIdealBudgetProvider);
     ref.read(lastRecurringAppliedCycleIdProvider.notifier).set(null);
   }
 }

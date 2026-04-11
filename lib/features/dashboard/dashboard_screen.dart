@@ -6,6 +6,7 @@ import '../../core/repositories/providers.dart';
 import 'home_tab.dart';
 import '../personal/personal_expenses_screen.dart';
 import '../pension/pension_screen.dart';
+import '../savings/savings_plan_screen.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
@@ -26,15 +27,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       HomeTab(
         onGoToPersonal: () => setState(() => _currentIndex = 1),
         onGoToPension: () => setState(() => _currentIndex = 2),
+        onGoToSavings: () => setState(() => _currentIndex = 3),
       ),
       const PersonalExpensesScreen(),
       const PensionScreen(),
-      Center(
-        child: Text(
-          'כאן יופיע מסך ההגדרות (בשלב מאוחר יותר)',
-          textAlign: TextAlign.center,
-        ),
-      ),
+      const SavingsPlanScreen(),
     ];
 
     return Scaffold(
@@ -67,8 +64,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             label: 'פנסיון',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.settings),
-            label: 'הגדרות',
+            icon: Icon(Icons.savings_outlined),
+            label: 'חיסכון',
           ),
         ],
       ),

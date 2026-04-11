@@ -7,6 +7,9 @@ import '../models/pension_models.dart';
 import '../models/personal_models.dart';
 import 'pension_repository.dart';
 import 'personal_repository.dart';
+import 'savings_repository.dart';
+import '../models/savings_models.dart';
+import '../personal/ideal_budget_logic.dart';
 
 class PersonalCycleSummary {
   final double totalSpent;
@@ -38,6 +41,11 @@ final personalRepositoryProvider = Provider<PersonalRepository>((ref) {
 final pensionRepositoryProvider = Provider<PensionRepository>((ref) {
   final firestore = ref.watch(firestoreProvider);
   return PensionRepository(firestore);
+});
+
+final savingsRepositoryProvider = Provider<SavingsRepository>((ref) {
+  final firestore = ref.watch(firestoreProvider);
+  return SavingsRepository(firestore);
 });
 
 /// Auth state
@@ -132,6 +140,82 @@ final personalCycleSummaryProvider =
   return PersonalCycleSummary(totalSpent: total, budget: budget);
 });
 
+/// התפלגות אידיאלית: הוראות קבע (קבוע) + חלוקת שאר התקציב לפי ממוצע 6 מחזורים קודמים.
+final personalIdealBudgetProvider =
+    FutureProvider<IdealBudgetSnapshot?>((ref) async {
+  final auth = ref.watch(firebaseAuthProvider).currentUser;
+  if (auth == null) return null;
+
+  final repo = ref.watch(personalRepositoryProvider);
+  final templates = await ref.watch(recurringTemplatesProvider.future);
+  final categories = await ref.watch(personalCategoriesProvider.future);
+  final cycleDoc = await ref.watch(currentPersonalCycleDocProvider.future);
+  final currentExpenses =
+      await ref.watch(personalExpensesForCurrentCycleProvider.future);
+  final budget = cycleDoc?.budget ?? 0;
+
+  final ranges = recentPersonalCycleRanges(count: 8);
+  final pastSix =
+      ranges.length > 1 ? ranges.skip(1).take(6).toList() : <PersonalCycleRange>[];
+
+  final expensesPerPastCycles = <List<PersonalExpense>>[];
+  for (final r in pastSix) {
+    final ex = await repo.getExpensesForRange(
+      userId: auth.uid,
+      start: r.start,
+      end: r.end,
+    );
+    expensesPerPastCycles.add(ex);
+  }
+
+  return buildIdealBudgetSnapshot(
+    budget: budget,
+    categories: categories,
+    templates: templates,
+    expensesPerPastCycles: expensesPerPastCycles,
+    currentExpenses: currentExpenses,
+  );
+});
+
+/// הוצאות לפי מזהה מחזור (למשל `2026-03-10`) – לצפייה בהיסטוריה.
+final personalExpensesForCycleIdProvider =
+    FutureProvider.family<List<PersonalExpense>, String>((ref, cycleId) async {
+  final auth = ref.watch(firebaseAuthProvider).currentUser;
+  if (auth == null) return [];
+
+  final range = personalCycleRangeFromId(cycleId);
+  if (range == null) return [];
+
+  final repo = ref.watch(personalRepositoryProvider);
+  return repo.getExpensesForRange(
+    userId: auth.uid,
+    start: range.start,
+    end: range.end,
+  );
+});
+
+/// מסמך מחזור לפי מזהה – ללא יצירה אוטומטית (רק קריאה).
+final personalCycleDocByIdProvider =
+    FutureProvider.family<PersonalCycle?, String>((ref, cycleId) async {
+  final auth = ref.watch(firebaseAuthProvider).currentUser;
+  if (auth == null) return null;
+
+  final repo = ref.watch(personalRepositoryProvider);
+  return repo.getCycle(auth.uid, cycleId);
+});
+
+final personalCycleSummaryForCycleIdProvider =
+    FutureProvider.family<PersonalCycleSummary, String>((ref, cycleId) async {
+  final expenses =
+      await ref.watch(personalExpensesForCycleIdProvider(cycleId).future);
+  final cycle = await ref.watch(personalCycleDocByIdProvider(cycleId).future);
+
+  final total = expenses.fold<double>(0, (acc, e) => acc + e.amount);
+  final budget = cycle?.budget ?? 0;
+
+  return PersonalCycleSummary(totalSpent: total, budget: budget);
+});
+
 final currentPensionMonthKeyProvider = Provider<PensionMonthKey>((ref) {
   return currentPensionMonth(DateTime.now());
 });
@@ -171,5 +255,34 @@ final recentPensionMonthsProvider =
 
   final repo = ref.watch(pensionRepositoryProvider);
   return repo.getRecentMonths(user.uid, limit: limit);
+});
+
+/// אחוז חיסכון גלובלי (שינוי לא פוגע ב-snapshot של חודשים קודמים).
+final savingsSettingsProvider = FutureProvider<SavingsSettings?>((ref) async {
+  final auth = ref.watch(firebaseAuthProvider).currentUser;
+  if (auth == null) return null;
+  return ref.watch(savingsRepositoryProvider).getSettings(auth.uid);
+});
+
+/// רשומת חיסכון לחודש קלנדרי (אחרי סנכרון מפנסיון).
+final savingsMonthEntryProvider =
+    FutureProvider.family<SavingsMonth?, PensionMonthKey>((ref, key) async {
+  final auth = ref.watch(firebaseAuthProvider).currentUser;
+  if (auth == null) return null;
+  return ref.watch(savingsRepositoryProvider).getMonth(
+        auth.uid,
+        year: key.year,
+        month: key.month,
+      );
+});
+
+final recentSavingsMonthsProvider =
+    FutureProvider.family<List<SavingsMonth>, int>((ref, limit) async {
+  final auth = ref.watch(firebaseAuthProvider).currentUser;
+  if (auth == null) return [];
+  return ref.watch(savingsRepositoryProvider).getRecentMonths(
+        auth.uid,
+        limit: limit,
+      );
 });
 

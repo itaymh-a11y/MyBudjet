@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/models/date_helpers.dart';
-import '../../core/models/personal_models.dart';
 import '../../core/repositories/providers.dart';
+import 'personal_cycle_stats_body.dart';
 
 class PersonalStatsScreen extends ConsumerWidget {
   const PersonalStatsScreen({super.key});
@@ -36,12 +36,7 @@ class PersonalStatsScreen extends ConsumerWidget {
                 data: (expenses) {
                   return categoriesAsync.when(
                     data: (categories) {
-                      if (expenses.isEmpty || categories.isEmpty) {
-                        return const Center(
-                          child: Text('אין מספיק נתונים להצגת סטטיסטיקה.'),
-                        );
-                      }
-                      return _StatsContent(
+                      return PersonalCycleStatsBody(
                         expenses: expenses,
                         categories: categories,
                       );
@@ -62,119 +57,6 @@ class PersonalStatsScreen extends ConsumerWidget {
             const _CyclesBarChart(),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _StatsContent extends StatelessWidget {
-  const _StatsContent({
-    required this.expenses,
-    required this.categories,
-  });
-
-  final List<PersonalExpense> expenses;
-  final List<PersonalCategory> categories;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final total = expenses.fold<double>(0, (sum, e) => sum + e.amount);
-
-    final Map<String, double> byCategory = {};
-    for (final e in expenses) {
-      byCategory[e.categoryId] = (byCategory[e.categoryId] ?? 0) + e.amount;
-    }
-
-    final entries = byCategory.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-
-    final colors = [
-      Colors.blue,
-      Colors.green,
-      Colors.orange,
-      Colors.purple,
-      Colors.red,
-      Colors.cyan,
-      Colors.teal,
-    ];
-
-    return Column(
-      children: [
-        Text(
-          'סה״כ הוצאות במחזור: ${total.toStringAsFixed(0)} ₪',
-          style: theme.textTheme.titleMedium,
-        ),
-        const SizedBox(height: 16),
-        SizedBox(
-          height: 200,
-          child: PieChart(
-            PieChartData(
-              sectionsSpace: 2,
-              centerSpaceRadius: 40,
-              sections: [
-                for (var i = 0; i < entries.length; i++)
-                  _buildPieSection(
-                    i,
-                    entries[i],
-                    categories,
-                    colors[i % colors.length],
-                    total,
-                  ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-        Expanded(
-          child: ListView.builder(
-            itemCount: entries.length,
-            itemBuilder: (context, index) {
-              final entry = entries[index];
-              final categoryName = categories
-                      .firstWhere(
-                        (c) => c.id == entry.key,
-                        orElse: () => PersonalCategory(
-                          id: entry.key,
-                          name: 'קטגוריה לא ידועה',
-                        ),
-                      )
-                      .name;
-              final pct = total == 0 ? 0 : (entry.value / total * 100);
-              return ListTile(
-                dense: true,
-                leading: CircleAvatar(
-                  backgroundColor: colors[index % colors.length],
-                ),
-                title: Text(categoryName),
-                subtitle: Text('${pct.toStringAsFixed(1)}%'),
-                trailing: Text('${entry.value.toStringAsFixed(0)} ₪'),
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-
-  PieChartSectionData _buildPieSection(
-    int index,
-    MapEntry<String, double> entry,
-    List<PersonalCategory> categories,
-    Color color,
-    double total,
-  ) {
-    final pct = total == 0 ? 0 : (entry.value / total * 100);
-    final title = '${pct.toStringAsFixed(0)}%';
-    return PieChartSectionData(
-      color: color,
-      value: entry.value,
-      title: title,
-      radius: 60,
-      titleStyle: const TextStyle(
-        color: Colors.white,
-        fontSize: 12,
-        fontWeight: FontWeight.bold,
       ),
     );
   }
