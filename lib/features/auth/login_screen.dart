@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/models/user_model.dart';
 import '../../core/repositories/providers.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -41,10 +42,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           password: _passwordController.text.trim(),
         );
       } else {
-        await auth.createUserWithEmailAndPassword(
+        final credential = await auth.createUserWithEmailAndPassword(
           email: _emailController.text.trim(),
           password: _passwordController.text.trim(),
         );
+        final createdUser = credential.user;
+        if (createdUser != null) {
+          final userRepository = ref.read(userRepositoryProvider);
+          await userRepository.upsertUser(
+            UserModel(
+              uid: createdUser.uid,
+              email: createdUser.email,
+              userType: 'selfEmployed',
+              savingsPercentage: 0.0,
+            ),
+          );
+        }
       }
     } on FirebaseAuthException catch (e) {
       setState(() {

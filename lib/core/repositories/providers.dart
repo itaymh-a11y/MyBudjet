@@ -8,6 +8,7 @@ import '../models/personal_models.dart';
 import 'pension_repository.dart';
 import 'personal_repository.dart';
 import 'savings_repository.dart';
+import 'user_repository.dart';
 import '../models/savings_models.dart';
 import '../personal/ideal_budget_logic.dart';
 
@@ -46,6 +47,11 @@ final pensionRepositoryProvider = Provider<PensionRepository>((ref) {
 final savingsRepositoryProvider = Provider<SavingsRepository>((ref) {
   final firestore = ref.watch(firestoreProvider);
   return SavingsRepository(firestore);
+});
+
+final userRepositoryProvider = Provider<UserRepository>((ref) {
+  final firestore = ref.watch(firestoreProvider);
+  return UserRepository(firestore);
 });
 
 /// Auth state

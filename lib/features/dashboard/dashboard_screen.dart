@@ -7,6 +7,7 @@ import 'home_tab.dart';
 import '../personal/personal_expenses_screen.dart';
 import '../pension/pension_screen.dart';
 import '../savings/savings_plan_screen.dart';
+import '../settings/settings_screen.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
@@ -38,6 +39,17 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       appBar: AppBar(
         title: Text('MyBudget - ${user?.email ?? ''}'),
         actions: [
+          IconButton(
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const SettingsScreen(),
+                ),
+              );
+            },
+            icon: const Icon(Icons.settings),
+            tooltip: 'הגדרות',
+          ),
           IconButton(
             onPressed: () => FirebaseAuth.instance.signOut(),
             icon: const Icon(Icons.logout),
