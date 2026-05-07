@@ -2,10 +2,12 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 /// הגדרות אחוז חיסכון גלובלי (שינוי לא משפיע רטרואקטיבית על snapshot בכל חודש).
 class SavingsSettings {
+  final String userId;
   final double savingsPercent;
   final DateTime updatedAt;
 
   const SavingsSettings({
+    required this.userId,
     required this.savingsPercent,
     required this.updatedAt,
   });
@@ -13,6 +15,7 @@ class SavingsSettings {
   factory SavingsSettings.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data() ?? {};
     return SavingsSettings(
+      userId: data['userId'] as String? ?? '',
       savingsPercent: (data['savingsPercent'] as num?)?.toDouble() ?? 0,
       updatedAt: (data['updatedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
     );
@@ -20,6 +23,7 @@ class SavingsSettings {
 
   Map<String, dynamic> toMap() {
     return {
+      'userId': userId,
       'savingsPercent': savingsPercent,
       'updatedAt': Timestamp.fromDate(updatedAt),
     };
@@ -29,6 +33,7 @@ class SavingsSettings {
 /// רשומת חיסכון לחודש קלנדרי – היעד מחושב מנטו הפנסיון (אחרי שמירה בפנסיון).
 class SavingsMonth {
   final String id;
+  final String userId;
   final int year;
   final int month;
   final double targetAmount;
@@ -41,6 +46,7 @@ class SavingsMonth {
 
   const SavingsMonth({
     required this.id,
+    required this.userId,
     required this.year,
     required this.month,
     required this.targetAmount,
@@ -55,6 +61,7 @@ class SavingsMonth {
     final data = doc.data() ?? {};
     return SavingsMonth(
       id: doc.id,
+      userId: data['userId'] as String? ?? '',
       year: data['year'] as int? ?? DateTime.now().year,
       month: data['month'] as int? ?? DateTime.now().month,
       targetAmount: (data['targetAmount'] as num?)?.toDouble() ?? 0,
@@ -68,6 +75,7 @@ class SavingsMonth {
 
   Map<String, dynamic> toMap() {
     return {
+      'userId': userId,
       'year': year,
       'month': month,
       'targetAmount': targetAmount,

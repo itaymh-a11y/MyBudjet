@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/models/date_helpers.dart';
-import '../../core/models/savings_models.dart';
+import '../../core/models/user_model.dart';
 import '../../core/repositories/providers.dart';
 
 class SavingsPlanScreen extends ConsumerStatefulWidget {
@@ -16,6 +16,8 @@ class SavingsPlanScreen extends ConsumerStatefulWidget {
 class _SavingsPlanScreenState extends ConsumerState<SavingsPlanScreen> {
   double _percentDraft = 0;
   bool _percentLoaded = false;
+  String? _lastSyncedSignature;
+  bool _syncInProgress = false;
 
   int? _selectedYear;
   int? _selectedMonth;
@@ -28,17 +30,26 @@ class _SavingsPlanScreenState extends ConsumerState<SavingsPlanScreen> {
   @override
   void initState() {
     super.initState();
-    final now = DateTime.now();
-    _selectedYear = now.year;
-    _selectedMonth = now.month;
+    final key = ref.read(currentPensionMonthKeyProvider);
+    _selectedYear = key.year;
+    _selectedMonth = key.month;
     Future<void>.delayed(Duration.zero, _loadPercentFromServer);
   }
 
+  // Supports legacy fraction format (0..1) and percent format (0..100).
+  double _normalizePercentForSlider(double raw) {
+    final normalized = raw <= 1.0 ? raw * 100.0 : raw;
+    return normalized.clamp(0.0, 100.0);
+  }
+
+  bool _isSamePercent(double a, double b) => (a - b).abs() < 0.001;
+
   Future<void> _loadPercentFromServer() async {
-    final s = await ref.read(savingsSettingsProvider.future);
+    final userProfile = await ref.read(currentUserProfileProvider.future);
     if (!mounted) return;
     setState(() {
-      _percentDraft = s?.savingsPercent ?? 0;
+      _percentDraft =
+          _normalizePercentForSlider(userProfile?.savingsPercentage ?? 0);
       _percentLoaded = true;
     });
   }
@@ -47,10 +58,10 @@ class _SavingsPlanScreenState extends ConsumerState<SavingsPlanScreen> {
       PensionMonthKey(year: _selectedYear!, month: _selectedMonth!);
 
   void _goToCurrentMonth() {
-    final now = DateTime.now();
+    final key = ref.read(currentPensionMonthKeyProvider);
     setState(() {
-      _selectedYear = now.year;
-      _selectedMonth = now.month;
+      _selectedYear = key.year;
+      _selectedMonth = key.month;
     });
   }
 
@@ -79,29 +90,24 @@ class _SavingsPlanScreenState extends ConsumerState<SavingsPlanScreen> {
   Future<void> _savePercent() async {
     final auth = ref.read(firebaseAuthProvider).currentUser;
     if (auth == null) return;
-    final repo = ref.read(savingsRepositoryProvider);
-    final clamped = _percentDraft.clamp(0.0, 1.0);
-    await repo.upsertSettings(
-      auth.uid,
-      SavingsSettings(
-        savingsPercent: clamped,
-        updatedAt: DateTime.now(),
-      ),
+    final userRepo = ref.read(userRepositoryProvider);
+    final clamped = _percentDraft.clamp(0.0, 100.0);
+    final currentProfile = await userRepo.getUser(auth.uid);
+    if (currentProfile == null) return;
+    await userRepo.updateUserSettings(
+      userId: auth.uid,
+      userType: currentProfile.userType,
+      savingsPercentage: clamped,
+      deductPersonalExpenses: currentProfile.deductPersonalExpenses,
+      businessTabName: currentProfile.businessTabName,
+      businessIconName: currentProfile.businessIconName,
+      personalCycleStartDay: currentProfile.personalCycleStartDay,
+      businessCycleStartDay: currentProfile.businessCycleStartDay,
+      employeeCompensationType: currentProfile.employeeCompensationType,
+      employeeFixedMonthlySalary: currentProfile.employeeFixedMonthlySalary,
+      employeeHourlyRate: currentProfile.employeeHourlyRate,
     );
-    ref.invalidate(savingsSettingsProvider);
-
-    final pension =
-        await ref.read(pensionMonthForProvider(_selectedKey).future);
-    if (pension != null) {
-      await repo.syncFromPensionNet(
-        userId: auth.uid,
-        year: _selectedKey.year,
-        month: _selectedKey.month,
-        netProfit: pension.netProfit,
-      );
-      ref.invalidate(savingsMonthEntryProvider(_selectedKey));
-      ref.invalidate(recentSavingsMonthsProvider(48));
-    }
+    ref.invalidate(currentUserProfileProvider);
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -117,11 +123,15 @@ class _SavingsPlanScreenState extends ConsumerState<SavingsPlanScreen> {
     final entry =
         await ref.read(savingsMonthEntryProvider(_selectedKey).future);
     if (entry == null) {
+      final profile = await ref.read(currentUserProfileProvider.future);
+      final name = profile?.businessTabName.trim();
+      final businessTabName =
+          (name == null || name.isEmpty) ? 'הכנסות' : name;
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+          SnackBar(
             content: Text(
-              'אין עדיין רשומת חיסכון לחודש זה. שמור קודם את נתוני החודש בפנסיון.',
+              'אין עדיין רשומת חיסכון לחודש זה. שמור קודם את נתוני החודש ב$businessTabName.',
             ),
           ),
         );
@@ -169,24 +179,118 @@ class _SavingsPlanScreenState extends ConsumerState<SavingsPlanScreen> {
     ref.invalidate(recentSavingsMonthsProvider(48));
   }
 
+  Future<void> _syncSuggestedTargetIfNeeded({
+    required PensionMonthKey key,
+    required double suggestedDeposit,
+    required double effectivePercent,
+    required double baseAfterDeduction,
+  }) async {
+    final auth = ref.read(firebaseAuthProvider).currentUser;
+    if (auth == null) return;
+    final signature =
+        '${key.year}-${key.month}|${suggestedDeposit.toStringAsFixed(2)}|'
+        '${effectivePercent.toStringAsFixed(2)}|${baseAfterDeduction.toStringAsFixed(2)}';
+    if (_lastSyncedSignature == signature || _syncInProgress) return;
+
+    _syncInProgress = true;
+    try {
+      await ref.read(savingsRepositoryProvider).syncSuggestedTargetForMonth(
+            userId: auth.uid,
+            year: key.year,
+            month: key.month,
+            targetAmount: suggestedDeposit,
+            // keep snapshot as ratio for backward compatibility
+            percentSnapshot: effectivePercent / 100.0,
+            baseAmountSnapshot: baseAfterDeduction,
+          );
+      _lastSyncedSignature = signature;
+      ref.invalidate(savingsMonthEntryProvider(key));
+      ref.invalidate(recentSavingsMonthsProvider(48));
+    } finally {
+      _syncInProgress = false;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final key = _selectedKey;
     final pensionAsync = ref.watch(pensionMonthForProvider(key));
     final savingsEntryAsync = ref.watch(savingsMonthEntryProvider(key));
-    final settingsAsync = ref.watch(savingsSettingsProvider);
+    final userProfileAsync = ref.watch(currentUserProfileProvider);
+    final personalExpensesAsync = ref.watch(personalExpensesForMonthProvider(key));
     final recentAsync = ref.watch(recentSavingsMonthsProvider(48));
 
-    final net = pensionAsync.maybeWhen(
-      data: (p) => p?.netProfit,
+    final baseIncome = pensionAsync.maybeWhen(
+      data: (p) {
+        if (p == null) return null;
+        return userProfileAsync.maybeWhen(
+          data: (u) => u?.userType == 'employee' ? p.grossIncome : p.netProfit,
+          orElse: () => p.netProfit,
+        );
+      },
       orElse: () => null,
     );
-    final settingsPercent = settingsAsync.maybeWhen(
-      data: (s) => s?.savingsPercent ?? 0,
+    final userSavingsPercent = userProfileAsync.maybeWhen(
+      data: (u) => u?.savingsPercentage ?? 0.0,
       orElse: () => 0.0,
     );
-    final previewTarget =
-        (net != null && net > 0) ? net * settingsPercent : 0.0;
+    final normalizedUserPercent =
+        _normalizePercentForSlider(userSavingsPercent);
+
+    ref.listen<AsyncValue<UserModel?>>(currentUserProfileProvider, (_, next) {
+      next.whenData((profile) {
+        if (!mounted || profile == null) return;
+        final incoming =
+            _normalizePercentForSlider(profile.savingsPercentage);
+        if (!_isSamePercent(_percentDraft, incoming)) {
+          setState(() {
+            _percentDraft = incoming;
+            _percentLoaded = true;
+          });
+        }
+      });
+    });
+    final effectivePercent = _percentLoaded ? _percentDraft : normalizedUserPercent;
+    final savingsRatio = effectivePercent / 100.0;
+    final deductPersonal = userProfileAsync.maybeWhen(
+      data: (u) => u?.deductPersonalExpenses ?? false,
+      orElse: () => false,
+    );
+    final businessTabName = userProfileAsync.maybeWhen(
+      data: (u) {
+        final value = u?.businessTabName.trim();
+        if (value == null || value.isEmpty) return 'הכנסות';
+        return value;
+      },
+      orElse: () => 'הכנסות',
+    );
+    final personalTotal = personalExpensesAsync.maybeWhen(
+      data: (list) => list.fold<double>(0, (sum, e) => sum + e.amount),
+      orElse: () => 0.0,
+    );
+    final adjustedBase = () {
+      final rawBase = baseIncome ?? 0.0;
+      if (!deductPersonal) return rawBase;
+      return rawBase - personalTotal;
+    }();
+    final adjustedBaseForCalc = adjustedBase < 0 ? 0.0 : adjustedBase;
+    final suggestedDeposit =
+        adjustedBaseForCalc > 0 ? adjustedBaseForCalc * savingsRatio : 0.0;
+
+    final hasCalculationData = pensionAsync.maybeWhen(
+      data: (p) => p != null,
+      orElse: () => false,
+    );
+    if (hasCalculationData) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _syncSuggestedTargetIfNeeded(
+          key: key,
+          suggestedDeposit: suggestedDeposit,
+          effectivePercent: effectivePercent,
+          baseAfterDeduction: adjustedBaseForCalc,
+        );
+      });
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -197,52 +301,60 @@ class _SavingsPlanScreenState extends ConsumerState<SavingsPlanScreen> {
         children: [
           Padding(
             padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  'אחוז חיסכון מהכנסה נטו (פנסיון)',
-                  style: Theme.of(context).textTheme.titleSmall,
-                ),
-                const SizedBox(height: 8),
-                if (!_percentLoaded)
-                  const LinearProgressIndicator(minHeight: 2)
-                else
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Slider(
-                          value: _percentDraft,
-                          min: 0,
-                          max: 0.5,
-                          divisions: 50,
-                          label: '${(_percentDraft * 100).round()}%',
-                          onChanged: (v) =>
-                              setState(() => _percentDraft = v),
-                        ),
+            child: Card(
+              color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'אחוז חיסכון מההגדרות הכלליות',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+                    const SizedBox(height: 8),
+                    if (!_percentLoaded)
+                      const LinearProgressIndicator(minHeight: 2)
+                    else
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Slider(
+                              value: _percentDraft,
+                              min: 0,
+                              max: 100,
+                              divisions: 100,
+                              label: '${_percentDraft.round()}%',
+                              onChanged: (v) =>
+                                  setState(() => _percentDraft = v),
+                            ),
+                          ),
+                          SizedBox(
+                            width: 56,
+                            child: Text(
+                              '${_percentDraft.round()}%',
+                              textAlign: TextAlign.center,
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                          ),
+                        ],
                       ),
-                      SizedBox(
-                        width: 56,
-                        child: Text(
-                          '${(_percentDraft * 100).round()}%',
-                          textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                      ),
-                    ],
-                  ),
-                ElevatedButton(
-                  onPressed: _percentLoaded ? _savePercent : null,
-                  child: const Text('שמור אחוז'),
+                    ElevatedButton(
+                      onPressed: _percentLoaded ? _savePercent : null,
+                      child: const Text('שמור אחוז'),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'האחוז נשמר גם במסך ההגדרות ומשמש לחישוב יעד חיסכון מוצע.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context).colorScheme.outline,
+                          ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  'שינוי האחוז חל על חודשים שיסונכרנו מפנסיון מעתה; לכל חודש נשמר אחוז (snapshot) בנפרד.',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.outline,
-                      ),
-                ),
-              ],
+              ),
             ),
           ),
           const Divider(height: 1),
@@ -287,12 +399,12 @@ class _SavingsPlanScreenState extends ConsumerState<SavingsPlanScreen> {
                 pensionAsync.when(
                   data: (pension) {
                     if (pension == null) {
-                      return const Card(
+                      return Card(
                         child: Padding(
-                          padding: EdgeInsets.all(16),
+                          padding: const EdgeInsets.all(16),
                           child: Text(
-                            'טרם נשמרו נתוני פנסיון לחודש זה. '
-                            'לאחר שמירה בפנסיון יחושב יעד החיסכון אוטומטית.',
+                            'טרם נשמרו נתוני $businessTabName לחודש זה. '
+                            'לאחר שמירה ב$businessTabName יחושב יעד החיסכון אוטומטית.',
                           ),
                         ),
                       );
@@ -304,9 +416,25 @@ class _SavingsPlanScreenState extends ConsumerState<SavingsPlanScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'הכנסה נטו מפנסיון (אותו חודש): '
-                              '${pension.netProfit.toStringAsFixed(0)} ₪',
+                              '${userProfileAsync.maybeWhen(
+                                            data: (u) => u?.userType == 'employee',
+                                            orElse: () => false,
+                                          )
+                                      ? 'הכנסה משכר (אותו חודש): '
+                                      : 'הכנסה נטו עסקית (אותו חודש): '}${baseIncome?.toStringAsFixed(0) ?? '0'} ₪',
                               style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                            if (deductPersonal) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                'קיזוז הוצאות אישיות: ${personalTotal.toStringAsFixed(0)} ₪',
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ],
+                            const SizedBox(height: 4),
+                            Text(
+                              'יעד חיסכון מוצע: ${suggestedDeposit.toStringAsFixed(0)} ₪',
+                              style: Theme.of(context).textTheme.titleSmall,
                             ),
                             const SizedBox(height: 12),
                             savingsEntryAsync.when(
@@ -332,8 +460,16 @@ class _SavingsPlanScreenState extends ConsumerState<SavingsPlanScreen> {
                                       const SizedBox(height: 4),
                                       Text(
                                         'חושב לפי '
-                                        '${(entry.percentSnapshot * 100).toStringAsFixed(0)}% '
-                                        '× נטו ${entry.pensionNetSnapshot.toStringAsFixed(0)} ₪',
+                                        '(${baseIncome?.toStringAsFixed(0) ?? '0'}'
+                                        '${deductPersonal ? ' - ${personalTotal.toStringAsFixed(0)}' : ''})'
+                                        ' × ${effectivePercent.toStringAsFixed(0)}%',
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodySmall,
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        'בסיס לחישוב אחרי קיזוז: ${adjustedBaseForCalc.toStringAsFixed(0)} ₪',
                                         style: Theme.of(context)
                                             .textTheme
                                             .bodySmall,
@@ -375,8 +511,8 @@ class _SavingsPlanScreenState extends ConsumerState<SavingsPlanScreen> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      'תצוגה מקדימה (יעד יישמר אחרי «שמור נתוני חודש» בפנסיון): '
-                                      '${previewTarget.toStringAsFixed(0)} ₪',
+                                      'תצוגה מקדימה (יעד יישמר אחרי «שמור נתוני חודש» ב$businessTabName): '
+                                      '${suggestedDeposit.toStringAsFixed(0)} ₪',
                                       style: Theme.of(context)
                                           .textTheme
                                           .bodyLarge,
@@ -384,7 +520,8 @@ class _SavingsPlanScreenState extends ConsumerState<SavingsPlanScreen> {
                                     const SizedBox(height: 8),
                                     Text(
                                       'לפי אחוז נוכחי '
-                                      '${(settingsPercent * 100).round()}% × נטו',
+                                      '${effectivePercent.round()}% × (${baseIncome?.toStringAsFixed(0) ?? '0'}'
+                                      '${deductPersonal ? ' - ${personalTotal.toStringAsFixed(0)}' : ''})',
                                       style: Theme.of(context)
                                           .textTheme
                                           .bodySmall,
@@ -403,7 +540,7 @@ class _SavingsPlanScreenState extends ConsumerState<SavingsPlanScreen> {
                   },
                   loading: () =>
                       const Center(child: CircularProgressIndicator()),
-                  error: (e, _) => Text('שגיאה בפנסיון: $e'),
+                  error: (e, _) => Text('שגיאה ב$businessTabName: $e'),
                 ),
                 const SizedBox(height: 24),
                 Text(
@@ -412,7 +549,7 @@ class _SavingsPlanScreenState extends ConsumerState<SavingsPlanScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'לכל חודש: יעד הפקדה לפי נטו הפנסיון, וסימון אם בוצעה הפקדה בפועל.',
+                  'לכל חודש: יעד הפקדה לפי נטו $businessTabName, וסימון אם בוצעה הפקדה בפועל.',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Theme.of(context).colorScheme.outline,
                       ),
@@ -421,8 +558,8 @@ class _SavingsPlanScreenState extends ConsumerState<SavingsPlanScreen> {
                 recentAsync.when(
                   data: (months) {
                     if (months.isEmpty) {
-                      return const Text(
-                        'אין עדיין רשומות חיסכון. שמור נתונים בפנסיון כדי ליצור יעדים.',
+                      return Text(
+                        'אין עדיין רשומות חיסכון. שמור נתונים ב$businessTabName כדי ליצור יעדים.',
                       );
                     }
                     final chartMonths = months.length > 12
@@ -524,7 +661,7 @@ class _SavingsPlanScreenState extends ConsumerState<SavingsPlanScreen> {
                               ),
                               subtitle: Text(
                                 'יעד הפקדה: ${m.targetAmount.toStringAsFixed(0)} ₪'
-                                ' • נטו פנסיון: ${m.pensionNetSnapshot.toStringAsFixed(0)} ₪'
+                                ' • נטו $businessTabName: ${m.pensionNetSnapshot.toStringAsFixed(0)} ₪'
                                 ' • ${m.deposited ? "בוצעה הפקדה" : "טרם סומן ביצוע"}',
                               ),
                               trailing: m.deposited

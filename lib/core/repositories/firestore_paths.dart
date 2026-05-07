@@ -17,6 +17,8 @@ class FirestorePaths {
   // Pension
   static String pensionMonths(String userId) =>
       'users/$userId/pension_months';
+  static String workHoursEntries(String userId) =>
+      'users/$userId/work_hours_entries';
 
   // Savings plan
   static String savingsSettingsDoc(String userId) =>

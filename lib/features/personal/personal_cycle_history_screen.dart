@@ -205,13 +205,17 @@ class _ExpenseListReadOnly extends StatelessWidget {
   final List<PersonalExpense> expenses;
   final List<PersonalCategory> categories;
 
-  String _categoryName(String categoryId) {
+  PersonalCategory _category(String categoryId) {
     return categories
         .firstWhere(
           (c) => c.id == categoryId,
-          orElse: () => PersonalCategory(id: categoryId, name: '—'),
-        )
-        .name;
+          orElse: () => PersonalCategory(
+            id: categoryId,
+            userId: '',
+            name: '—',
+            iconName: 'category',
+          ),
+        );
   }
 
   @override
@@ -231,9 +235,16 @@ class _ExpenseListReadOnly extends StatelessWidget {
       itemBuilder: (context, index) {
         final e = sorted[index];
         return ListTile(
+          leading: CircleAvatar(
+            radius: 16,
+            child: Icon(
+              PersonalCategory.iconDataFromName(_category(e.categoryId).iconName),
+              size: 18,
+            ),
+          ),
           title: Text(e.title),
           subtitle: Text(
-            '${e.date.day}.${e.date.month}.${e.date.year} • ${_categoryName(e.categoryId)}',
+            '${e.date.day}.${e.date.month}.${e.date.year} • ${_category(e.categoryId).name}',
           ),
           trailing: Text(
             '${e.amount.toStringAsFixed(0)} ₪',

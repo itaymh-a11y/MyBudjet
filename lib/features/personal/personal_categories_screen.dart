@@ -29,6 +29,13 @@ class PersonalCategoriesScreen extends ConsumerWidget {
             itemBuilder: (context, index) {
               final category = categories[index];
               return ListTile(
+                leading: CircleAvatar(
+                  radius: 16,
+                  child: Icon(
+                    PersonalCategory.iconDataFromName(category.iconName),
+                    size: 18,
+                  ),
+                ),
                 title: Text(category.name),
                 onTap: () =>
                     _openAddCategoryDialog(context, ref, existing: category),
@@ -98,7 +105,9 @@ class PersonalCategoriesScreen extends ConsumerWidget {
                 final newCategory = PersonalCategory(
                   id: existing?.id ??
                       DateTime.now().millisecondsSinceEpoch.toString(),
+                  userId: user.uid,
                   name: name,
+                  iconName: existing?.iconName ?? 'category',
                   isDefault: existing?.isDefault ?? false,
                   colorValue: existing?.colorValue,
                 );

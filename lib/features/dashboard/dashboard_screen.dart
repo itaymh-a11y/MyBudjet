@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/constants/business_professions.dart';
 import '../../core/repositories/providers.dart';
 import 'home_tab.dart';
 import '../personal/personal_expenses_screen.dart';
@@ -23,6 +24,19 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   Widget build(BuildContext context) {
     final auth = ref.watch(firebaseAuthProvider);
     final user = auth.currentUser;
+    final userProfileAsync = ref.watch(currentUserProfileProvider);
+    final businessTabName = userProfileAsync.maybeWhen(
+      data: (profile) {
+        final value = profile?.businessTabName.trim();
+        if (value == null || value.isEmpty) return 'הכנסות';
+        return value;
+      },
+      orElse: () => 'הכנסות',
+    );
+    final businessIconName = userProfileAsync.maybeWhen(
+      data: (profile) => profile?.businessIconName,
+      orElse: () => BusinessProfessionCatalog.defaultIconName,
+    );
 
     final pages = <Widget>[
       HomeTab(
@@ -35,48 +49,67 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       const SavingsPlanScreen(),
     ];
 
+    final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
         title: Text('MyBudget - ${user?.email ?? ''}'),
         actions: [
-          IconButton(
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => const SettingsScreen(),
+          Padding(
+            padding: const EdgeInsetsDirectional.only(end: 8),
+            child: Row(
+              children: [
+                FilledButton.tonalIcon(
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const SettingsScreen(),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.tune),
+                  label: const Text('הגדרות'),
                 ),
-              );
-            },
-            icon: const Icon(Icons.settings),
-            tooltip: 'הגדרות',
-          ),
-          IconButton(
-            onPressed: () => FirebaseAuth.instance.signOut(),
-            icon: const Icon(Icons.logout),
-            tooltip: 'התנתק',
+                const SizedBox(width: 8),
+                IconButton.filledTonal(
+                  onPressed: () => FirebaseAuth.instance.signOut(),
+                  icon: const Icon(Icons.logout),
+                  tooltip: 'התנתק',
+                ),
+              ],
+            ),
           ),
         ],
       ),
       body: pages[_currentIndex],
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        onTap: (index) => setState(() => _currentIndex = index),
-        type: BottomNavigationBarType.fixed,
-        items: const [
-          BottomNavigationBarItem(
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _currentIndex,
+        onDestinationSelected: (index) => setState(() => _currentIndex = index),
+        indicatorColor: colorScheme.primaryContainer,
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+        destinations: [
+          const NavigationDestination(
             icon: Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home),
             label: 'בית',
           ),
-          BottomNavigationBarItem(
+          const NavigationDestination(
             icon: Icon(Icons.account_balance_wallet_outlined),
+            selectedIcon: Icon(Icons.account_balance_wallet),
             label: 'אישי',
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.pets),
-            label: 'פנסיון',
+          NavigationDestination(
+            icon: Icon(
+              BusinessProfessionCatalog.iconFromName(businessIconName),
+            ),
+            selectedIcon: Icon(
+              BusinessProfessionCatalog.iconFromName(businessIconName),
+              color: colorScheme.primary,
+            ),
+            label: businessTabName,
           ),
-          BottomNavigationBarItem(
+          const NavigationDestination(
             icon: Icon(Icons.savings_outlined),
+            selectedIcon: Icon(Icons.savings),
             label: 'חיסכון',
           ),
         ],

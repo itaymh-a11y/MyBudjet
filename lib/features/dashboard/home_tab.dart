@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/constants/business_professions.dart';
 import '../../core/repositories/providers.dart';
 
-/// מסך בית – תצוגת סיכום: Progress Bar אישי + כרטיס פנסיון + קישורים מהירים.
+/// מסך בית – תצוגת סיכום: Progress Bar אישי + כרטיס עסקי + קישורים מהירים.
 class HomeTab extends ConsumerWidget {
   const HomeTab({
     super.key,
@@ -23,6 +24,19 @@ class HomeTab extends ConsumerWidget {
     final savingsKey = ref.watch(currentPensionMonthKeyProvider);
     final savingsMonthAsync = ref.watch(savingsMonthEntryProvider(savingsKey));
     final cycle = ref.watch(currentPersonalCycleProvider);
+    final userProfileAsync = ref.watch(currentUserProfileProvider);
+    final businessTabName = userProfileAsync.maybeWhen(
+      data: (profile) {
+        final value = profile?.businessTabName.trim();
+        if (value == null || value.isEmpty) return 'הכנסות';
+        return value;
+      },
+      orElse: () => 'הכנסות',
+    );
+    final businessIconName = userProfileAsync.maybeWhen(
+      data: (profile) => profile?.businessIconName,
+      orElse: () => BusinessProfessionCatalog.defaultIconName,
+    );
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -141,10 +155,15 @@ class HomeTab extends ConsumerWidget {
                       children: [
                         Row(
                           children: [
-                            Icon(Icons.pets, color: Colors.green.shade700),
+                            Icon(
+                              BusinessProfessionCatalog.iconFromName(
+                                businessIconName,
+                              ),
+                              color: Colors.green.shade700,
+                            ),
                             const SizedBox(width: 8),
                             Text(
-                              'פנסיון – חודש נוכחי',
+                              '$businessTabName – חודש נוכחי',
                               style: theme.textTheme.titleMedium?.copyWith(
                                 color: Colors.green.shade900,
                                 fontWeight: FontWeight.bold,
@@ -177,7 +196,7 @@ class HomeTab extends ConsumerWidget {
                           ),
                         const SizedBox(height: 8),
                         Text(
-                          'לחץ למעבר לפנסיון',
+                          'לחץ למעבר ל$businessTabName',
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: Colors.green.shade700,
                           ),
@@ -244,7 +263,7 @@ class HomeTab extends ConsumerWidget {
                           ),
                         ] else
                           Text(
-                            'לאחר שמירת נתונים בפנסיון יחושב היעד אוטומטית',
+                            'לאחר שמירת נתונים ב$businessTabName יחושב היעד אוטומטית',
                             style: theme.textTheme.bodyMedium,
                           ),
                         const SizedBox(height: 8),

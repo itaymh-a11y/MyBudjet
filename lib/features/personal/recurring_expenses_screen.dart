@@ -242,6 +242,7 @@ class RecurringExpensesScreen extends ConsumerWidget {
     final repo = ref.read(personalRepositoryProvider);
     final template = RecurringExpenseTemplate(
       id: existing?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      userId: user.uid,
       title: title,
       amount: amount,
       categoryId: categoryId ?? categories.first.id,

@@ -10,6 +10,8 @@ class PensionRepository {
 
   CollectionReference<Map<String, dynamic>> _monthsRef(String userId) =>
       _firestore.collection(FirestorePaths.pensionMonths(userId));
+  CollectionReference<Map<String, dynamic>> _workHoursRef(String userId) =>
+      _firestore.collection(FirestorePaths.workHoursEntries(userId));
 
   Future<PensionMonth?> getMonth({
     required String userId,
@@ -36,7 +38,34 @@ class PensionRepository {
   }
 
   Future<void> upsertMonth(String userId, PensionMonth monthData) async {
-    await _monthsRef(userId).doc(monthData.id).set(monthData.toMap());
+    await _monthsRef(userId).doc(monthData.id).set({
+      ...monthData.toMap(),
+      'userId': userId,
+    });
+  }
+
+  Future<List<WorkHoursEntry>> getWorkHoursForRange({
+    required String userId,
+    required DateTime start,
+    required DateTime end,
+  }) async {
+    final snapshot = await _workHoursRef(userId)
+        .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
+        .where('date', isLessThanOrEqualTo: Timestamp.fromDate(end))
+        .orderBy('date')
+        .get();
+    return snapshot.docs.map(WorkHoursEntry.fromDoc).toList();
+  }
+
+  Future<void> addWorkHours(String userId, WorkHoursEntry entry) async {
+    await _workHoursRef(userId).add({
+      ...entry.toMap(),
+      'userId': userId,
+    });
+  }
+
+  Future<void> deleteWorkHours(String userId, String entryId) async {
+    await _workHoursRef(userId).doc(entryId).delete();
   }
 }
 

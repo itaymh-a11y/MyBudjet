@@ -20,6 +20,58 @@ class IdealBudgetSnapshot {
   final List<CategoryBudgetIdeal> categories;
 }
 
+/// נתוני קלט "מוכנים ל-AI" לחישוב התפלגות אידיאלית על בסיס מחזור אחד/עבר.
+class IdealBudgetAiInput {
+  const IdealBudgetAiInput({
+    required this.budget,
+    required this.categories,
+    required this.templates,
+    required this.expensesPerPastCycles,
+    required this.currentExpenses,
+  });
+
+  /// תקרת התקציב למחזור.
+  final double budget;
+
+  /// כל הקטגוריות הפעילות.
+  final List<PersonalCategory> categories;
+
+  /// הוראות קבע – משמשות לחישוב הוצאות חובה.
+  final List<RecurringExpenseTemplate> templates;
+
+  /// הוצאות לכל אחד ממחזורי העבר שבהם רוצים להשתמש לחישוב.
+  final List<List<PersonalExpense>> expensesPerPastCycles;
+
+  /// הוצאות במחזור הנוכחי (לתצוגת "כמה כבר הוצאתי").
+  final List<PersonalExpense> currentExpenses;
+}
+
+/// תוצאה כללית של חישוב אידיאלי (AI או לוגיקה דטרמיניסטית).
+class IdealBudgetEngineResult {
+  const IdealBudgetEngineResult({
+    required this.snapshot,
+    this.source = IdealBudgetEngineSource.heuristic,
+  });
+
+  /// צילום מצב לפי המודל האחיד של האפליקציה.
+  final IdealBudgetSnapshot snapshot;
+
+  /// מקור החישוב – יאפשר לנו להבדיל בין AI ללוגיקה קיימת בעתיד.
+  final IdealBudgetEngineSource source;
+}
+
+enum IdealBudgetEngineSource {
+  /// החישוב בוצע לפי האלגוריתם ההיסטורי (6 מחזורים וכו׳).
+  heuristic,
+
+  /// החישוב בוצע על־ידי שירות AI חיצוני.
+  ai,
+}
+
+typedef IdealBudgetAiComputer = Future<IdealBudgetSnapshot?> Function(
+  IdealBudgetAiInput input,
+);
+
 class CategoryBudgetIdeal {
   const CategoryBudgetIdeal({
     required this.categoryId,
@@ -58,6 +110,30 @@ Map<String, double> _fixedByCategory(List<RecurringExpenseTemplate> templates) {
     m[t.categoryId] = (m[t.categoryId] ?? 0) + t.amount;
   }
   return m;
+}
+
+List<PersonalCategory> _mergeCategoriesWithUsedIds({
+  required List<PersonalCategory> categories,
+  required List<List<PersonalExpense>> expensesPerPastCycles,
+  required List<PersonalExpense> currentExpenses,
+}) {
+  final byId = <String, PersonalCategory>{for (final c in categories) c.id: c};
+  final usedIds = <String>{
+    for (final e in currentExpenses) e.categoryId,
+    for (final cycle in expensesPerPastCycles)
+      for (final e in cycle) e.categoryId,
+  };
+
+  for (final id in usedIds) {
+    if (id.trim().isEmpty || byId.containsKey(id)) continue;
+    byId[id] = PersonalCategory(
+      id: id,
+      userId: '',
+      name: 'קטגוריה לא זמינה',
+      iconName: 'category',
+    );
+  }
+  return byId.values.toList();
 }
 
 /// מחשב ממוצע נתחי גמישות לפי 6 מחזורים עבר (רק מחזורים עם flexTotal > 0).
@@ -111,14 +187,20 @@ IdealBudgetSnapshot buildIdealBudgetSnapshot({
   required List<List<PersonalExpense>> expensesPerPastCycles,
   required List<PersonalExpense> currentExpenses,
 }) {
+  final effectiveCategories = _mergeCategoriesWithUsedIds(
+    categories: categories,
+    expensesPerPastCycles: expensesPerPastCycles,
+    currentExpenses: currentExpenses,
+  );
+
   final fixedByCategory = _fixedByCategory(templates);
   final fixedTotal =
       fixedByCategory.values.fold<double>(0, (a, b) => a + b);
 
   final flexiblePool = (budget - fixedTotal).clamp(0.0, double.infinity);
 
-  final normalizedFlex = normalizedFlexibleShares(
-    categories: categories,
+  var normalizedFlex = normalizedFlexibleShares(
+    categories: effectiveCategories,
     fixedByCategory: fixedByCategory,
     expensesPerPastCycles: expensesPerPastCycles,
   );
@@ -127,7 +209,7 @@ IdealBudgetSnapshot buildIdealBudgetSnapshot({
   for (final expenses in expensesPerPastCycles) {
     final spentByCat = _sumByCategory(expenses);
     var flexTotal = 0.0;
-    for (final c in categories) {
+    for (final c in effectiveCategories) {
       final spent = spentByCat[c.id] ?? 0;
       final fix = fixedByCategory[c.id] ?? 0;
       flexTotal += (spent - fix).clamp(0.0, double.infinity);
@@ -137,8 +219,30 @@ IdealBudgetSnapshot buildIdealBudgetSnapshot({
 
   final spentCurrent = _sumByCategory(currentExpenses);
 
+  final allZero = normalizedFlex.values.every((v) => v <= 0);
+  if (allZero && flexiblePool > 0) {
+    var totalCurrentFlexible = 0.0;
+    final currentFlexibleByCategory = <String, double>{};
+    for (final c in effectiveCategories) {
+      final spent = spentCurrent[c.id] ?? 0;
+      final fix = fixedByCategory[c.id] ?? 0;
+      final flex = (spent - fix).clamp(0.0, double.infinity);
+      currentFlexibleByCategory[c.id] = flex;
+      totalCurrentFlexible += flex;
+    }
+    if (totalCurrentFlexible > 0) {
+      normalizedFlex = {
+        for (final c in effectiveCategories)
+          c.id: (currentFlexibleByCategory[c.id] ?? 0) / totalCurrentFlexible,
+      };
+    } else if (effectiveCategories.isNotEmpty) {
+      final equal = 1 / effectiveCategories.length;
+      normalizedFlex = {for (final c in effectiveCategories) c.id: equal};
+    }
+  }
+
   final rows = <CategoryBudgetIdeal>[];
-  for (final c in categories) {
+  for (final c in effectiveCategories) {
     final fix = fixedByCategory[c.id] ?? 0;
     final portion = normalizedFlex[c.id] ?? 0;
     final flexIdeal = flexiblePool * portion;
@@ -163,5 +267,42 @@ IdealBudgetSnapshot buildIdealBudgetSnapshot({
     flexiblePool: flexiblePool,
     pastCyclesUsedForAverage: cyclesUsed,
     categories: rows,
+  );
+}
+
+/// מנוע חישוב התפלגות אידיאלית – נקודת כניסה אחת לכל האפליקציה.
+///
+/// כרגע משתמש רק בלוגיקה ההיסטורית (`buildIdealBudgetSnapshot`),
+/// ובהמשך ניתן יהיה להחליף/להרחיב אותו לשימוש ב-AI מבלי לגעת בשאר הקוד.
+Future<IdealBudgetEngineResult> computeIdealBudgetUsingEngine(
+  IdealBudgetAiInput input, {
+  bool preferAi = false,
+  IdealBudgetAiComputer? aiComputer,
+}) async {
+  if (preferAi && aiComputer != null) {
+    try {
+      final aiSnapshot = await aiComputer(input);
+      if (aiSnapshot != null) {
+        return IdealBudgetEngineResult(
+          snapshot: aiSnapshot,
+          source: IdealBudgetEngineSource.ai,
+        );
+      }
+    } catch (_) {
+      // שקט בכוונה: אם שירות ה-AI נופל, ממשיכים ללוגיקה הדטרמיניסטית.
+    }
+  }
+
+  final snapshot = buildIdealBudgetSnapshot(
+    budget: input.budget,
+    categories: input.categories,
+    templates: input.templates,
+    expensesPerPastCycles: input.expensesPerPastCycles,
+    currentExpenses: input.currentExpenses,
+  );
+
+  return IdealBudgetEngineResult(
+    snapshot: snapshot,
+    source: IdealBudgetEngineSource.heuristic,
   );
 }

@@ -73,22 +73,27 @@ class PersonalCycleStatsBody extends StatelessWidget {
             itemCount: entries.length,
             itemBuilder: (context, index) {
               final entry = entries[index];
-              final categoryName = categories
-                  .firstWhere(
-                    (c) => c.id == entry.key,
-                    orElse: () => PersonalCategory(
-                      id: entry.key,
-                      name: 'קטגוריה לא ידועה',
-                    ),
-                  )
-                  .name;
+              final category = categories.firstWhere(
+                (c) => c.id == entry.key,
+                orElse: () => PersonalCategory(
+                  id: entry.key,
+                  userId: '',
+                  name: 'קטגוריה לא ידועה',
+                  iconName: 'category',
+                ),
+              );
               final pct = total == 0 ? 0 : (entry.value / total * 100);
               return ListTile(
                 dense: true,
                 leading: CircleAvatar(
                   backgroundColor: colors[index % colors.length],
+                  child: Icon(
+                    PersonalCategory.iconDataFromName(category.iconName),
+                    color: Colors.white,
+                    size: 16,
+                  ),
                 ),
-                title: Text(categoryName),
+                title: Text(category.name),
                 subtitle: Text('${pct.toStringAsFixed(1)}%'),
                 trailing: Text('${entry.value.toStringAsFixed(0)} ₪'),
               );

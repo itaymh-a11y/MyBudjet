@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../constants/personal_category_bank.dart';
 import '../models/date_helpers.dart';
 import '../models/personal_models.dart';
 import 'firestore_paths.dart';
@@ -26,8 +27,41 @@ class PersonalRepository {
     return snapshot.docs.map(PersonalCategory.fromDoc).toList();
   }
 
+  Future<void> ensurePredefinedCategories(String userId) async {
+    final existing = await getCategories(userId);
+    final existingNames = existing.map((c) => c.name.trim()).toSet();
+    final batch = _firestore.batch();
+    var hasWrites = false;
+
+    for (var i = 0; i < PersonalCategoryBank.categories.length; i++) {
+      final predefined = PersonalCategoryBank.categories[i];
+      if (existingNames.contains(predefined.name.trim())) continue;
+      final id = 'predef_${(i + 1).toString().padLeft(3, '0')}';
+      final docRef = _categoriesRef(userId).doc(id);
+      final category = PersonalCategory(
+        id: id,
+        userId: userId,
+        name: predefined.name,
+        iconName: predefined.iconName,
+        isDefault: true,
+      );
+      batch.set(docRef, {
+        ...category.toMap(),
+        'userId': userId,
+      });
+      hasWrites = true;
+    }
+
+    if (hasWrites) {
+      await batch.commit();
+    }
+  }
+
   Future<void> upsertCategory(String userId, PersonalCategory category) async {
-    await _categoriesRef(userId).doc(category.id).set(category.toMap());
+    await _categoriesRef(userId).doc(category.id).set({
+      ...category.toMap(),
+      'userId': userId,
+    });
   }
 
   Future<void> deleteCategory(String userId, String categoryId) async {
@@ -48,11 +82,17 @@ class PersonalRepository {
   }
 
   Future<void> addExpense(String userId, PersonalExpense expense) async {
-    await _expensesRef(userId).add(expense.toMap());
+    await _expensesRef(userId).add({
+      ...expense.toMap(),
+      'userId': userId,
+    });
   }
 
   Future<void> updateExpense(String userId, PersonalExpense expense) async {
-    await _expensesRef(userId).doc(expense.id).update(expense.toMap());
+    await _expensesRef(userId).doc(expense.id).update({
+      ...expense.toMap(),
+      'userId': userId,
+    });
   }
 
   Future<void> deleteExpense(String userId, String expenseId) async {
@@ -66,7 +106,10 @@ class PersonalRepository {
   }
 
   Future<void> upsertCycle(String userId, PersonalCycle cycle) async {
-    await _cyclesRef(userId).doc(cycle.id).set(cycle.toMap());
+    await _cyclesRef(userId).doc(cycle.id).set({
+      ...cycle.toMap(),
+      'userId': userId,
+    });
   }
 
   Future<PersonalCycle> getOrCreateCycle({
@@ -85,6 +128,7 @@ class PersonalRepository {
 
     final newCycle = PersonalCycle(
       id: cycleId,
+      userId: userId,
       startDate: start,
       endDate: end,
       budget: budget,
@@ -119,14 +163,20 @@ class PersonalRepository {
     String userId,
     RecurringExpenseTemplate template,
   ) async {
-    await _recurringRef(userId).doc(template.id).set(template.toMap());
+    await _recurringRef(userId).doc(template.id).set({
+      ...template.toMap(),
+      'userId': userId,
+    });
   }
 
   Future<void> updateRecurringTemplate(
     String userId,
     RecurringExpenseTemplate template,
   ) async {
-    await _recurringRef(userId).doc(template.id).set(template.toMap());
+    await _recurringRef(userId).doc(template.id).set({
+      ...template.toMap(),
+      'userId': userId,
+    });
   }
 
   Future<void> deleteRecurringTemplate(
@@ -155,6 +205,7 @@ class PersonalRepository {
       final date = DateTime(cycleStart.year, cycleStart.month, day);
       final expense = PersonalExpense(
         id: '',
+        userId: userId,
         title: t.title,
         amount: t.amount,
         categoryId: t.categoryId,

@@ -55,6 +55,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               email: createdUser.email,
               userType: 'selfEmployed',
               savingsPercentage: 0.0,
+              deductPersonalExpenses: false,
+              businessTabName: 'הכנסות',
+              businessIconName: 'business',
             ),
           );
         }

@@ -2,6 +2,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/constants/business_professions.dart';
 import '../../core/models/pension_models.dart';
 import '../../core/models/date_helpers.dart';
 import '../../core/repositories/providers.dart';
@@ -25,9 +26,9 @@ class _PensionScreenState extends ConsumerState<PensionScreen> {
   @override
   void initState() {
     super.initState();
-    final now = DateTime.now();
-    _selectedYear = now.year;
-    _selectedMonth = now.month;
+    final key = ref.read(currentPensionMonthKeyProvider);
+    _selectedYear = key.year;
+    _selectedMonth = key.month;
   }
 
   @override
@@ -41,10 +42,10 @@ class _PensionScreenState extends ConsumerState<PensionScreen> {
       PensionMonthKey(year: _selectedYear!, month: _selectedMonth!);
 
   void _goToCurrentMonth() {
-    final now = DateTime.now();
+    final key = ref.read(currentPensionMonthKeyProvider);
     setState(() {
-      _selectedYear = now.year;
-      _selectedMonth = now.month;
+      _selectedYear = key.year;
+      _selectedMonth = key.month;
     });
   }
 
@@ -115,10 +116,47 @@ class _PensionScreenState extends ConsumerState<PensionScreen> {
   Widget build(BuildContext context) {
     final selectedKey = _selectedKey;
     final monthAsync = ref.watch(pensionMonthForProvider(selectedKey));
+    final workHoursAsync = ref.watch(workHoursForMonthProvider(selectedKey));
+    final userProfileAsync = ref.watch(currentUserProfileProvider);
+    final userType = userProfileAsync.maybeWhen(
+      data: (profile) => profile?.userType ?? 'selfEmployed',
+      orElse: () => 'selfEmployed',
+    );
+    final employeeCompensationType = userProfileAsync.maybeWhen(
+      data: (profile) => profile?.employeeCompensationType ?? 'fixed',
+      orElse: () => 'fixed',
+    );
+    final employeeFixedSalary = userProfileAsync.maybeWhen(
+      data: (profile) => profile?.employeeFixedMonthlySalary ?? 0.0,
+      orElse: () => 0.0,
+    );
+    final employeeHourlyRate = userProfileAsync.maybeWhen(
+      data: (profile) => profile?.employeeHourlyRate ?? 0.0,
+      orElse: () => 0.0,
+    );
+    final businessTabName = userProfileAsync.maybeWhen(
+      data: (profile) {
+        final value = profile?.businessTabName.trim();
+        if (value == null || value.isEmpty) return 'הכנסות';
+        return value;
+      },
+      orElse: () => 'הכנסות',
+    );
+    final businessIconName = userProfileAsync.maybeWhen(
+      data: (profile) => profile?.businessIconName,
+      orElse: () => BusinessProfessionCatalog.defaultIconName,
+    );
+    final isSelfEmployed = userType == 'selfEmployed';
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('פנסיון'),
+        title: Row(
+          children: [
+            Icon(BusinessProfessionCatalog.iconFromName(businessIconName)),
+            const SizedBox(width: 8),
+            Text(businessTabName),
+          ],
+        ),
       ),
       body: Padding(
         padding: const EdgeInsets.all(16),
@@ -140,7 +178,10 @@ class _PensionScreenState extends ConsumerState<PensionScreen> {
                       children: [
                         Text(
                           '${_monthNames[_selectedMonth!]} $_selectedYear',
-                          style: Theme.of(context).textTheme.titleMedium,
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
                         ),
                         TextButton.icon(
                           onPressed: _goToCurrentMonth,
@@ -159,105 +200,235 @@ class _PensionScreenState extends ConsumerState<PensionScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            monthAsync.when(
-              data: (month) {
-                if (_lastAppliedKey != selectedKey) {
-                  _lastAppliedKey = selectedKey;
-                  if (month != null) {
-                    _grossController.text =
-                        month.grossIncome.toStringAsFixed(0);
-                    _expensesController.text =
-                        month.totalExpenses.toStringAsFixed(0);
-                  } else {
-                    _grossController.clear();
-                    _expensesController.clear();
-                  }
-                }
-                final net = _calculateNet();
-                final netColor = net >= 0 ? Colors.green : Colors.red;
+            Expanded(
+              child: ListView(
+                children: [
+                  monthAsync.when(
+                    data: (month) {
+                      if (_lastAppliedKey != selectedKey) {
+                        _lastAppliedKey = selectedKey;
+                        if (month != null && userType == 'selfEmployed') {
+                          _grossController.text =
+                              month.grossIncome.toStringAsFixed(0);
+                          _expensesController.text =
+                              month.totalExpenses.toStringAsFixed(0);
+                        } else if (userType == 'selfEmployed') {
+                          _grossController.clear();
+                          _expensesController.clear();
+                        }
+                      }
+                      final parsedGross = _parseController(_grossController);
+                      final parsedExpenses = _parseController(_expensesController);
+                      final hourlyEntries = workHoursAsync.maybeWhen(
+                        data: (list) => list,
+                        orElse: () => const <WorkHoursEntry>[],
+                      );
+                      final hourlyGross = hourlyEntries.fold<double>(
+                        0,
+                        (sum, e) => sum + (e.hours * e.hourlyRateSnapshot),
+                      );
+                      final gross = userType == 'selfEmployed'
+                          ? parsedGross
+                          : (employeeCompensationType == 'hourly'
+                              ? hourlyGross
+                              : employeeFixedSalary);
+                      final expenses =
+                          userType == 'selfEmployed' ? parsedExpenses : 0.0;
+                      final net = gross - expenses;
+                      final netColor = net >= 0 ? Colors.green : Colors.red;
 
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    TextField(
-                      controller: _grossController,
-                      decoration: const InputDecoration(
-                        labelText: 'הכנסה ברוטו (₪)',
-                        border: OutlineInputBorder(),
-                      ),
-                      keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true),
-                      onChanged: (_) => setState(() {}),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _expensesController,
-                      decoration: const InputDecoration(
-                        labelText: 'סה״כ הוצאות פנסיון (₪)',
-                        border: OutlineInputBorder(),
-                      ),
-                      keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true),
-                      onChanged: (_) => setState(() {}),
-                    ),
-                    const SizedBox(height: 12),
-                    Card(
-                      color: netColor.withOpacity(0.1),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text('רווח נטו לחודש:'),
-                            const SizedBox(height: 4),
-                            Text(
-                              '${net.toStringAsFixed(0)} ₪',
-                              style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                                color: netColor,
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          if (userType == 'selfEmployed') ...[
+                            TextField(
+                              controller: _grossController,
+                              decoration: const InputDecoration(
+                                labelText: 'הכנסה ברוטו (₪)',
+                                border: OutlineInputBorder(),
+                              ),
+                              keyboardType: const TextInputType.numberWithOptions(
+                                  decimal: true),
+                              onChanged: (_) => setState(() {}),
+                            ),
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller: _expensesController,
+                              decoration: InputDecoration(
+                                labelText: 'סה״כ הוצאות $businessTabName (₪)',
+                                border: OutlineInputBorder(),
+                              ),
+                              keyboardType: const TextInputType.numberWithOptions(
+                                  decimal: true),
+                              onChanged: (_) => setState(() {}),
+                            ),
+                          ] else if (employeeCompensationType == 'fixed') ...[
+                            Card(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .secondaryContainer
+                                  .withOpacity(0.35),
+                              child: Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Text(
+                                  'שכר גלובלי חודשי: ${employeeFixedSalary.toStringAsFixed(0)} ₪',
+                                ),
                               ),
                             ),
+                          ] else ...[
+                            Card(
+                              child: Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  children: [
+                                    Text(
+                                      'שכר שעתי: ${employeeHourlyRate.toStringAsFixed(2)} ₪ לשעה',
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      'שעות שנרשמו במחזור: '
+                                      '${hourlyEntries.fold<double>(0, (s, e) => s + e.hours).toStringAsFixed(2)}',
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      'שכר מצטבר למחזור: ${hourlyGross.toStringAsFixed(0)} ₪',
+                                      style: const TextStyle(fontWeight: FontWeight.w700),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    ElevatedButton.icon(
+                                      onPressed: employeeHourlyRate <= 0
+                                          ? null
+                                          : () => _openAddHoursDialog(
+                                                selectedKey,
+                                                employeeHourlyRate,
+                                              ),
+                                      icon: const Icon(Icons.add),
+                                      label: const Text('הוספת שעות'),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            workHoursAsync.when(
+                              data: (entries) {
+                                if (entries.isEmpty) {
+                                  return const Text('אין עדיין רשומות שעות למחזור זה.');
+                                }
+                                return Column(
+                                  children: [
+                                    for (final entry in entries)
+                                      Card(
+                                        margin: const EdgeInsets.only(bottom: 8),
+                                        child: ListTile(
+                                          contentPadding:
+                                              const EdgeInsets.symmetric(horizontal: 12),
+                                          title: Text(
+                                            '${entry.hours.toStringAsFixed(2)} שעות',
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                          subtitle: Text(
+                                            '${entry.date.day}.${entry.date.month}.${entry.date.year} • '
+                                            '${(entry.hours * entry.hourlyRateSnapshot).toStringAsFixed(0)} ₪',
+                                          ),
+                                          trailing: IconButton(
+                                            icon: const Icon(Icons.delete_outline),
+                                            onPressed: () => _deleteHoursEntry(
+                                              selectedKey,
+                                              entry.id,
+                                              entries,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                );
+                              },
+                              loading: () => const LinearProgressIndicator(minHeight: 2),
+                              error: (e, _) => Text('שגיאה בטעינת שעות: $e'),
+                            ),
                           ],
+                          const SizedBox(height: 12),
+                          Card(
+                            color: netColor.withOpacity(0.1),
+                            child: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text('רווח נטו לחודש:'),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '${net.toStringAsFixed(0)} ₪',
+                                    style: TextStyle(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold,
+                                      color: netColor,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          ElevatedButton(
+                            onPressed: () {
+                              if (userType == 'selfEmployed') {
+                                _saveMonth(selectedKey);
+                                return;
+                              }
+                              _saveMonth(
+                                selectedKey,
+                                forcedGross: gross,
+                                forcedExpenses: 0,
+                              );
+                            },
+                            child: Text(
+                              userType == 'selfEmployed'
+                                  ? 'שמור נתוני חודש'
+                                  : 'שמור נתוני שכר למחזור',
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                    loading: () => const Center(child: CircularProgressIndicator()),
+                    error: (e, _) => Center(child: Text('שגיאה בטעינת חודש: $e')),
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    height: 280,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: _openChartFullscreen,
+                      child: Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Text(
+                                isSelfEmployed
+                                    ? 'השוואת חודשים – ברוטו, הוצאות, נטו'
+                                    : 'השוואת חודשים – ברוטו, נטו',
+                              ),
+                              const SizedBox(height: 4),
+                              const Text(
+                                'לחץ על הגרף לתצוגה מלאה',
+                                style: TextStyle(fontSize: 12, color: Colors.grey),
+                              ),
+                              const SizedBox(height: 8),
+                              const Expanded(child: _PensionBarChart(compact: true)),
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    ElevatedButton(
-                      onPressed: () => _saveMonth(selectedKey),
-                      child: const Text('שמור נתוני חודש'),
-                    ),
-                  ],
-                );
-              },
-              loading: () =>
-                  const Center(child: CircularProgressIndicator()),
-              error: (e, _) =>
-                  Center(child: Text('שגיאה בטעינת חודש: $e')),
-            ),
-            const SizedBox(height: 24),
-            Expanded(
-              child: InkWell(
-                borderRadius: BorderRadius.circular(12),
-                onTap: _openChartFullscreen,
-                child: Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: const [
-                        Text('השוואת חודשים – ברוטו, הוצאות, נטו'),
-                        SizedBox(height: 4),
-                        Text(
-                          'לחץ על הגרף לתצוגה מלאה',
-                          style: TextStyle(fontSize: 12, color: Colors.grey),
-                        ),
-                        SizedBox(height: 8),
-                        Expanded(child: _PensionBarChart(compact: true)),
-                      ],
-                    ),
                   ),
-                ),
+                ],
               ),
             ),
           ],
@@ -271,24 +442,23 @@ class _PensionScreenState extends ConsumerState<PensionScreen> {
     return double.tryParse(text) ?? 0;
   }
 
-  double _calculateNet() {
-    final gross = _parseController(_grossController);
-    final expenses = _parseController(_expensesController);
-    return gross - expenses;
-  }
-
-  Future<void> _saveMonth(PensionMonthKey key) async {
-    final auth = ref.read(firebaseAuthProvider).currentUser;
+  Future<void> _saveMonth(
+    PensionMonthKey key, {
+    double? forcedGross,
+    double? forcedExpenses,
+  }) async {
+    final auth = ref.read(currentAuthUserProvider);
     if (auth == null) return;
 
-    final gross = _parseController(_grossController);
-    final expenses = _parseController(_expensesController);
+    final gross = forcedGross ?? _parseController(_grossController);
+    final expenses = forcedExpenses ?? _parseController(_expensesController);
     final net = gross - expenses;
 
     final repo = ref.read(pensionRepositoryProvider);
     final id = '${key.year}-${key.month.toString().padLeft(2, '0')}';
     final month = PensionMonth(
       id: id,
+      userId: auth.uid,
       year: key.year,
       month: key.month,
       grossIncome: gross,
@@ -311,6 +481,113 @@ class _PensionScreenState extends ConsumerState<PensionScreen> {
     ref.invalidate(savingsMonthEntryProvider(key));
     ref.invalidate(recentSavingsMonthsProvider(48));
   }
+
+  Future<void> _openAddHoursDialog(PensionMonthKey key, double hourlyRate) async {
+    final hoursController = TextEditingController();
+    DateTime selectedDate = DateTime.now();
+
+    final result = await showDialog<(double, DateTime)>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setLocalState) => AlertDialog(
+          title: const Text('הוספת שעות עבודה'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: hoursController,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(
+                  labelText: 'כמות שעות (למשל 2.5)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('תאריך'),
+                subtitle: Text(
+                  '${selectedDate.day}.${selectedDate.month}.${selectedDate.year}',
+                ),
+                trailing: const Icon(Icons.calendar_month),
+                onTap: () async {
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: selectedDate,
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime(2100),
+                  );
+                  if (picked == null) return;
+                  setLocalState(() => selectedDate = picked);
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('ביטול'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final parsed = double.tryParse(
+                  hoursController.text.trim().replaceAll(',', '.'),
+                );
+                if (parsed == null || parsed <= 0) return;
+                Navigator.of(context).pop((parsed, selectedDate));
+              },
+              child: const Text('שמור'),
+            ),
+          ],
+        ),
+      ),
+    );
+    hoursController.dispose();
+    if (!mounted || result == null) return;
+
+    final auth = ref.read(currentAuthUserProvider);
+    if (auth == null) return;
+    final repo = ref.read(pensionRepositoryProvider);
+    await repo.addWorkHours(
+      auth.uid,
+      WorkHoursEntry(
+        id: '',
+        userId: auth.uid,
+        date: result.$2,
+        hours: result.$1,
+        hourlyRateSnapshot: hourlyRate,
+        createdAt: DateTime.now(),
+      ),
+    );
+    ref.invalidate(workHoursForMonthProvider(key));
+    final entries = await ref.read(workHoursForMonthProvider(key).future);
+    await _syncHourlyMonthFromEntries(key, entries);
+  }
+
+  Future<void> _deleteHoursEntry(
+    PensionMonthKey key,
+    String entryId,
+    List<WorkHoursEntry> existing,
+  ) async {
+    final auth = ref.read(currentAuthUserProvider);
+    if (auth == null) return;
+    await ref.read(pensionRepositoryProvider).deleteWorkHours(auth.uid, entryId);
+    ref.invalidate(workHoursForMonthProvider(key));
+    final refreshed = existing.where((e) => e.id != entryId).toList();
+    await _syncHourlyMonthFromEntries(key, refreshed);
+  }
+
+  Future<void> _syncHourlyMonthFromEntries(
+    PensionMonthKey key,
+    List<WorkHoursEntry> entries,
+  ) async {
+    final gross = entries.fold<double>(
+      0,
+      (sum, e) => sum + (e.hours * e.hourlyRateSnapshot),
+    );
+    await _saveMonth(key, forcedGross: gross, forcedExpenses: 0);
+  }
 }
 
 class _PensionBarChart extends ConsumerWidget {
@@ -321,6 +598,11 @@ class _PensionBarChart extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final monthsAsync = ref.watch(recentPensionMonthsProvider(12));
+    final userType = ref.watch(currentUserProfileProvider).maybeWhen(
+          data: (profile) => profile?.userType ?? 'selfEmployed',
+          orElse: () => 'selfEmployed',
+        );
+    final includeExpenses = userType == 'selfEmployed';
 
     return monthsAsync.when(
       data: (months) {
@@ -330,8 +612,10 @@ class _PensionBarChart extends ConsumerWidget {
           );
         }
         final maxValue = months
-                .map((m) =>
-                    [m.grossIncome, m.totalExpenses, m.netProfit.abs()]
+                .map((m) => includeExpenses
+                    ? [m.grossIncome, m.totalExpenses, m.netProfit.abs()]
+                        .reduce((a, b) => a > b ? a : b)
+                    : [m.grossIncome, m.netProfit.abs()]
                         .reduce((a, b) => a > b ? a : b))
                 .fold<double>(0, (max, v) => v > max ? v : max) *
             1.2;
@@ -383,11 +667,12 @@ class _PensionBarChart extends ConsumerWidget {
                       width: compact ? 6 : 10,
                       color: Colors.blue,
                     ),
-                    BarChartRodData(
-                      toY: months[i].totalExpenses,
-                      width: compact ? 6 : 10,
-                      color: Colors.orange,
-                    ),
+                    if (includeExpenses)
+                      BarChartRodData(
+                        toY: months[i].totalExpenses,
+                        width: compact ? 6 : 10,
+                        color: Colors.orange,
+                      ),
                     BarChartRodData(
                       toY: months[i].netProfit >= 0
                           ? months[i].netProfit

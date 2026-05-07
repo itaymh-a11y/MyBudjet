@@ -17,6 +17,8 @@ class SavingsRepository {
   static String monthDocId(int year, int month) =>
       '$year-${month.toString().padLeft(2, '0')}';
 
+  bool _closeEnough(double a, double b) => (a - b).abs() < 0.0001;
+
   Future<SavingsSettings?> getSettings(String userId) async {
     final doc = await _settingsRef(userId).get();
     if (!doc.exists) return null;
@@ -24,7 +26,10 @@ class SavingsRepository {
   }
 
   Future<void> upsertSettings(String userId, SavingsSettings settings) async {
-    await _settingsRef(userId).set(settings.toMap());
+    await _settingsRef(userId).set({
+      ...settings.toMap(),
+      'userId': userId,
+    });
   }
 
   Future<SavingsMonth?> getMonth(
@@ -54,7 +59,10 @@ class SavingsRepository {
   }
 
   Future<void> upsertMonth(String userId, SavingsMonth data) async {
-    await _monthsRef(userId).doc(data.id).set(data.toMap());
+    await _monthsRef(userId).doc(data.id).set({
+      ...data.toMap(),
+      'userId': userId,
+    });
   }
 
   /// אחרי שמירת נתוני פנסיון – מעדכן יעד חיסכון לחודש זה לפי אחוז נוכחי ונטו.
@@ -77,6 +85,7 @@ class SavingsRepository {
     final now = DateTime.now();
     final merged = SavingsMonth(
       id: id,
+      userId: userId,
       year: year,
       month: month,
       targetAmount: target,
@@ -102,6 +111,7 @@ class SavingsRepository {
     final now = DateTime.now();
     final updated = SavingsMonth(
       id: existing.id,
+      userId: userId,
       year: existing.year,
       month: existing.month,
       targetAmount: existing.targetAmount,
@@ -112,5 +122,40 @@ class SavingsRepository {
       updatedAt: now,
     );
     await upsertMonth(userId, updated);
+  }
+
+  Future<void> syncSuggestedTargetForMonth({
+    required String userId,
+    required int year,
+    required int month,
+    required double targetAmount,
+    required double percentSnapshot,
+    required double baseAmountSnapshot,
+  }) async {
+    final id = monthDocId(year, month);
+    final existing = await getMonth(userId, year: year, month: month);
+    final clampedTarget = targetAmount < 0 ? 0.0 : targetAmount;
+    final now = DateTime.now();
+
+    if (existing != null &&
+        _closeEnough(existing.targetAmount, clampedTarget) &&
+        _closeEnough(existing.percentSnapshot, percentSnapshot) &&
+        _closeEnough(existing.pensionNetSnapshot, baseAmountSnapshot)) {
+      return;
+    }
+
+    final merged = SavingsMonth(
+      id: id,
+      userId: userId,
+      year: year,
+      month: month,
+      targetAmount: clampedTarget,
+      percentSnapshot: percentSnapshot,
+      pensionNetSnapshot: baseAmountSnapshot,
+      deposited: existing?.deposited ?? false,
+      depositedAt: existing?.depositedAt,
+      updatedAt: now,
+    );
+    await upsertMonth(userId, merged);
   }
 }
