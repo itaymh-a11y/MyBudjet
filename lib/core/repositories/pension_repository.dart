@@ -12,6 +12,10 @@ class PensionRepository {
       _firestore.collection(FirestorePaths.pensionMonths(userId));
   CollectionReference<Map<String, dynamic>> _workHoursRef(String userId) =>
       _firestore.collection(FirestorePaths.workHoursEntries(userId));
+  CollectionReference<Map<String, dynamic>> _businessIncomeRef(String userId) =>
+      _firestore.collection(FirestorePaths.businessIncomeEntries(userId));
+  CollectionReference<Map<String, dynamic>> _businessExpenseRef(String userId) =>
+      _firestore.collection(FirestorePaths.businessExpenseEntries(userId));
 
   Future<PensionMonth?> getMonth({
     required String userId,
@@ -66,6 +70,55 @@ class PensionRepository {
 
   Future<void> deleteWorkHours(String userId, String entryId) async {
     await _workHoursRef(userId).doc(entryId).delete();
+  }
+
+  Future<List<BusinessIncomeEntry>> getBusinessIncomeForRange({
+    required String userId,
+    required DateTime start,
+    required DateTime end,
+  }) async {
+    final snapshot = await _businessIncomeRef(userId)
+        .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
+        .where('date', isLessThanOrEqualTo: Timestamp.fromDate(end))
+        .orderBy('date')
+        .get();
+    return snapshot.docs.map(BusinessIncomeEntry.fromDoc).toList();
+  }
+
+  Future<void> addBusinessIncome(String userId, BusinessIncomeEntry entry) async {
+    await _businessIncomeRef(userId).add({
+      ...entry.toMap(),
+      'userId': userId,
+    });
+  }
+
+  Future<void> deleteBusinessIncome(String userId, String entryId) async {
+    await _businessIncomeRef(userId).doc(entryId).delete();
+  }
+
+  Future<List<BusinessExpenseEntry>> getBusinessExpensesForRange({
+    required String userId,
+    required DateTime start,
+    required DateTime end,
+  }) async {
+    final snapshot = await _businessExpenseRef(userId)
+        .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
+        .where('date', isLessThanOrEqualTo: Timestamp.fromDate(end))
+        .orderBy('date')
+        .get();
+    return snapshot.docs.map(BusinessExpenseEntry.fromDoc).toList();
+  }
+
+  Future<void> addBusinessExpense(
+      String userId, BusinessExpenseEntry entry) async {
+    await _businessExpenseRef(userId).add({
+      ...entry.toMap(),
+      'userId': userId,
+    });
+  }
+
+  Future<void> deleteBusinessExpense(String userId, String entryId) async {
+    await _businessExpenseRef(userId).doc(entryId).delete();
   }
 }
 

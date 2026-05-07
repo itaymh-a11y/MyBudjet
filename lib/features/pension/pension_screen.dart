@@ -117,6 +117,10 @@ class _PensionScreenState extends ConsumerState<PensionScreen> {
     final selectedKey = _selectedKey;
     final monthAsync = ref.watch(pensionMonthForProvider(selectedKey));
     final workHoursAsync = ref.watch(workHoursForMonthProvider(selectedKey));
+    final businessIncomeEntriesAsync =
+        ref.watch(businessIncomeEntriesForMonthProvider(selectedKey));
+    final businessExpenseEntriesAsync =
+        ref.watch(businessExpenseEntriesForMonthProvider(selectedKey));
     final userProfileAsync = ref.watch(currentUserProfileProvider);
     final userType = userProfileAsync.maybeWhen(
       data: (profile) => profile?.userType ?? 'selfEmployed',
@@ -147,6 +151,14 @@ class _PensionScreenState extends ConsumerState<PensionScreen> {
       orElse: () => BusinessProfessionCatalog.defaultIconName,
     );
     final isSelfEmployed = userType == 'selfEmployed';
+    final selfEmployedManualIncomeEntries = userProfileAsync.maybeWhen(
+      data: (profile) => profile?.selfEmployedManualIncomeEntries ?? false,
+      orElse: () => false,
+    );
+    final selfEmployedManualExpenseEntries = userProfileAsync.maybeWhen(
+      data: (profile) => profile?.selfEmployedManualExpenseEntries ?? false,
+      orElse: () => false,
+    );
 
     return Scaffold(
       appBar: AppBar(
@@ -207,18 +219,46 @@ class _PensionScreenState extends ConsumerState<PensionScreen> {
                     data: (month) {
                       if (_lastAppliedKey != selectedKey) {
                         _lastAppliedKey = selectedKey;
-                        if (month != null && userType == 'selfEmployed') {
-                          _grossController.text =
-                              month.grossIncome.toStringAsFixed(0);
-                          _expensesController.text =
-                              month.totalExpenses.toStringAsFixed(0);
-                        } else if (userType == 'selfEmployed') {
-                          _grossController.clear();
-                          _expensesController.clear();
+                        if (userType == 'selfEmployed') {
+                          if (!selfEmployedManualIncomeEntries) {
+                            if (month != null) {
+                              _grossController.text =
+                                  month.grossIncome.toStringAsFixed(0);
+                            } else {
+                              _grossController.clear();
+                            }
+                          }
+                          if (!selfEmployedManualExpenseEntries) {
+                            if (month != null) {
+                              _expensesController.text =
+                                  month.totalExpenses.toStringAsFixed(0);
+                            } else {
+                              _expensesController.clear();
+                            }
+                          }
                         }
                       }
                       final parsedGross = _parseController(_grossController);
                       final parsedExpenses = _parseController(_expensesController);
+                      final businessIncomeEntries = businessIncomeEntriesAsync
+                          .maybeWhen(
+                            data: (list) => list,
+                            orElse: () => const <BusinessIncomeEntry>[],
+                          );
+                      final businessExpenseEntries = businessExpenseEntriesAsync
+                          .maybeWhen(
+                            data: (list) => list,
+                            orElse: () => const <BusinessExpenseEntry>[],
+                          );
+                      final manualIncomeGross = businessIncomeEntries.fold<double>(
+                        0,
+                        (sum, e) => sum + e.amount,
+                      );
+                      final manualExpenseTotal =
+                          businessExpenseEntries.fold<double>(
+                        0,
+                        (sum, e) => sum + e.amount,
+                      );
                       final hourlyEntries = workHoursAsync.maybeWhen(
                         data: (list) => list,
                         orElse: () => const <WorkHoursEntry>[],
@@ -228,12 +268,18 @@ class _PensionScreenState extends ConsumerState<PensionScreen> {
                         (sum, e) => sum + (e.hours * e.hourlyRateSnapshot),
                       );
                       final gross = userType == 'selfEmployed'
-                          ? parsedGross
+                          ? (selfEmployedManualIncomeEntries
+                              ? manualIncomeGross
+                              : parsedGross)
                           : (employeeCompensationType == 'hourly'
                               ? hourlyGross
                               : employeeFixedSalary);
                       final expenses =
-                          userType == 'selfEmployed' ? parsedExpenses : 0.0;
+                          userType == 'selfEmployed'
+                              ? (selfEmployedManualExpenseEntries
+                                  ? manualExpenseTotal
+                                  : parsedExpenses)
+                              : 0.0;
                       final net = gross - expenses;
                       final netColor = net >= 0 ? Colors.green : Colors.red;
 
@@ -241,27 +287,45 @@ class _PensionScreenState extends ConsumerState<PensionScreen> {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           if (userType == 'selfEmployed') ...[
-                            TextField(
-                              controller: _grossController,
-                              decoration: const InputDecoration(
-                                labelText: 'הכנסה ברוטו (₪)',
-                                border: OutlineInputBorder(),
+                            if (!selfEmployedManualIncomeEntries)
+                              TextField(
+                                controller: _grossController,
+                                decoration: const InputDecoration(
+                                  labelText: 'הכנסה ברוטו (₪)',
+                                  border: OutlineInputBorder(),
+                                ),
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                  decimal: true,
+                                ),
+                                onChanged: (_) => setState(() {}),
                               ),
-                              keyboardType: const TextInputType.numberWithOptions(
-                                  decimal: true),
-                              onChanged: (_) => setState(() {}),
-                            ),
+                            if (selfEmployedManualIncomeEntries)
+                              _buildManualIncomeSection(
+                                selectedKey: selectedKey,
+                                entries: businessIncomeEntries,
+                                total: manualIncomeGross,
+                              ),
                             const SizedBox(height: 12),
-                            TextField(
-                              controller: _expensesController,
-                              decoration: InputDecoration(
-                                labelText: 'סה״כ הוצאות $businessTabName (₪)',
-                                border: OutlineInputBorder(),
+                            if (!selfEmployedManualExpenseEntries)
+                              TextField(
+                                controller: _expensesController,
+                                decoration: InputDecoration(
+                                  labelText: 'סה״כ הוצאות $businessTabName (₪)',
+                                  border: OutlineInputBorder(),
+                                ),
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                  decimal: true,
+                                ),
+                                onChanged: (_) => setState(() {}),
                               ),
-                              keyboardType: const TextInputType.numberWithOptions(
-                                  decimal: true),
-                              onChanged: (_) => setState(() {}),
-                            ),
+                            if (selfEmployedManualExpenseEntries)
+                              _buildManualExpenseSection(
+                                selectedKey: selectedKey,
+                                entries: businessExpenseEntries,
+                                total: manualExpenseTotal,
+                              ),
                           ] else if (employeeCompensationType == 'fixed') ...[
                             Card(
                               color: Theme.of(context)
@@ -377,7 +441,16 @@ class _PensionScreenState extends ConsumerState<PensionScreen> {
                           ElevatedButton(
                             onPressed: () {
                               if (userType == 'selfEmployed') {
-                                _saveMonth(selectedKey);
+                                _saveMonth(
+                                  selectedKey,
+                                  forcedGross: selfEmployedManualIncomeEntries
+                                      ? manualIncomeGross
+                                      : null,
+                                  forcedExpenses:
+                                      selfEmployedManualExpenseEntries
+                                          ? manualExpenseTotal
+                                          : null,
+                                );
                                 return;
                               }
                               _saveMonth(
@@ -431,6 +504,104 @@ class _PensionScreenState extends ConsumerState<PensionScreen> {
                 ],
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildManualIncomeSection({
+    required PensionMonthKey selectedKey,
+    required List<BusinessIncomeEntry> entries,
+    required double total,
+  }) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'הכנסות ברוטו (רשומות ידניות): ${total.toStringAsFixed(0)} ₪',
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            ElevatedButton.icon(
+              onPressed: () => _openAddBusinessIncomeDialog(selectedKey),
+              icon: const Icon(Icons.add),
+              label: const Text('הוספת הכנסה'),
+            ),
+            const SizedBox(height: 8),
+            if (entries.isEmpty) const Text('אין עדיין רשומות הכנסה למחזור זה.'),
+            for (final entry in entries)
+              Card(
+                margin: const EdgeInsets.only(bottom: 8),
+                child: ListTile(
+                  title: Text(
+                    '${entry.amount.toStringAsFixed(0)} ₪',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  subtitle: Text(
+                    '${entry.date.day}.${entry.date.month}.${entry.date.year}',
+                  ),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.delete_outline),
+                    onPressed: () => _deleteBusinessIncomeEntry(
+                      selectedKey,
+                      entry.id,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildManualExpenseSection({
+    required PensionMonthKey selectedKey,
+    required List<BusinessExpenseEntry> entries,
+    required double total,
+  }) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'הוצאות עסקיות (רשומות ידניות): ${total.toStringAsFixed(0)} ₪',
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            ElevatedButton.icon(
+              onPressed: () => _openAddBusinessExpenseDialog(selectedKey),
+              icon: const Icon(Icons.add),
+              label: const Text('הוספת הוצאה עסקית'),
+            ),
+            const SizedBox(height: 8),
+            if (entries.isEmpty) const Text('אין עדיין רשומות הוצאה למחזור זה.'),
+            for (final entry in entries)
+              Card(
+                margin: const EdgeInsets.only(bottom: 8),
+                child: ListTile(
+                  title: Text(
+                    '${entry.amount.toStringAsFixed(0)} ₪',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  subtitle: Text(
+                    '${entry.date.day}.${entry.date.month}.${entry.date.year}',
+                  ),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.delete_outline),
+                    onPressed: () => _deleteBusinessExpenseEntry(
+                      selectedKey,
+                      entry.id,
+                    ),
+                  ),
+                ),
+              ),
           ],
         ),
       ),
@@ -565,6 +736,138 @@ class _PensionScreenState extends ConsumerState<PensionScreen> {
     await _syncHourlyMonthFromEntries(key, entries);
   }
 
+  Future<void> _openAddBusinessIncomeDialog(PensionMonthKey key) async {
+    final result = await _openAmountAndDateDialog(title: 'הוספת הכנסה');
+    if (!mounted || result == null) return;
+    final auth = ref.read(currentAuthUserProvider);
+    if (auth == null) return;
+    await ref.read(pensionRepositoryProvider).addBusinessIncome(
+          auth.uid,
+          BusinessIncomeEntry(
+            id: '',
+            userId: auth.uid,
+            date: result.$2,
+            amount: result.$1,
+            createdAt: DateTime.now(),
+          ),
+        );
+    ref.invalidate(businessIncomeEntriesForMonthProvider(key));
+    await _syncSelfEmployedMonthFromManualEntries(key);
+  }
+
+  Future<void> _openAddBusinessExpenseDialog(PensionMonthKey key) async {
+    final result = await _openAmountAndDateDialog(title: 'הוספת הוצאה עסקית');
+    if (!mounted || result == null) return;
+    final auth = ref.read(currentAuthUserProvider);
+    if (auth == null) return;
+    await ref.read(pensionRepositoryProvider).addBusinessExpense(
+          auth.uid,
+          BusinessExpenseEntry(
+            id: '',
+            userId: auth.uid,
+            date: result.$2,
+            amount: result.$1,
+            createdAt: DateTime.now(),
+          ),
+        );
+    ref.invalidate(businessExpenseEntriesForMonthProvider(key));
+    await _syncSelfEmployedMonthFromManualEntries(key);
+  }
+
+  Future<void> _deleteBusinessIncomeEntry(
+    PensionMonthKey key,
+    String entryId,
+  ) async {
+    final auth = ref.read(currentAuthUserProvider);
+    if (auth == null) return;
+    await ref.read(pensionRepositoryProvider).deleteBusinessIncome(
+          auth.uid,
+          entryId,
+        );
+    ref.invalidate(businessIncomeEntriesForMonthProvider(key));
+    await _syncSelfEmployedMonthFromManualEntries(key);
+  }
+
+  Future<void> _deleteBusinessExpenseEntry(
+    PensionMonthKey key,
+    String entryId,
+  ) async {
+    final auth = ref.read(currentAuthUserProvider);
+    if (auth == null) return;
+    await ref.read(pensionRepositoryProvider).deleteBusinessExpense(
+          auth.uid,
+          entryId,
+        );
+    ref.invalidate(businessExpenseEntriesForMonthProvider(key));
+    await _syncSelfEmployedMonthFromManualEntries(key);
+  }
+
+  Future<(double, DateTime)?> _openAmountAndDateDialog({
+    required String title,
+  }) async {
+    final amountController = TextEditingController();
+    DateTime selectedDate = DateTime.now();
+    final result = await showDialog<(double, DateTime)>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setLocalState) => AlertDialog(
+          title: Text(title),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: amountController,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(
+                  labelText: 'סכום (₪)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('תאריך'),
+                subtitle: Text(
+                  '${selectedDate.day}.${selectedDate.month}.${selectedDate.year}',
+                ),
+                trailing: const Icon(Icons.calendar_month),
+                onTap: () async {
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: selectedDate,
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime(2100),
+                  );
+                  if (picked == null) return;
+                  setLocalState(() => selectedDate = picked);
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('ביטול'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final parsed = double.tryParse(
+                  amountController.text.trim().replaceAll(',', '.'),
+                );
+                if (parsed == null || parsed <= 0) return;
+                Navigator.of(context).pop((parsed, selectedDate));
+              },
+              child: const Text('שמור'),
+            ),
+          ],
+        ),
+      ),
+    );
+    amountController.dispose();
+    return result;
+  }
+
   Future<void> _deleteHoursEntry(
     PensionMonthKey key,
     String entryId,
@@ -587,6 +890,32 @@ class _PensionScreenState extends ConsumerState<PensionScreen> {
       (sum, e) => sum + (e.hours * e.hourlyRateSnapshot),
     );
     await _saveMonth(key, forcedGross: gross, forcedExpenses: 0);
+  }
+
+  Future<void> _syncSelfEmployedMonthFromManualEntries(PensionMonthKey key) async {
+    final profile = await ref.read(currentUserProfileProvider.future);
+    if (profile == null || profile.userType != 'selfEmployed') return;
+    final manualIncome = profile.selfEmployedManualIncomeEntries;
+    final manualExpense = profile.selfEmployedManualExpenseEntries;
+    if (!manualIncome && !manualExpense) return;
+
+    final incomeEntries = manualIncome
+        ? await ref.read(businessIncomeEntriesForMonthProvider(key).future)
+        : const <BusinessIncomeEntry>[];
+    final expenseEntries = manualExpense
+        ? await ref.read(businessExpenseEntriesForMonthProvider(key).future)
+        : const <BusinessExpenseEntry>[];
+    final forcedGross = manualIncome
+        ? incomeEntries.fold<double>(0, (sum, e) => sum + e.amount)
+        : null;
+    final forcedExpenses = manualExpense
+        ? expenseEntries.fold<double>(0, (sum, e) => sum + e.amount)
+        : null;
+    await _saveMonth(
+      key,
+      forcedGross: forcedGross,
+      forcedExpenses: forcedExpenses,
+    );
   }
 }
 

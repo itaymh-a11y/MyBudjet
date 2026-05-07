@@ -33,6 +33,8 @@ class UserRepository {
     required String employeeCompensationType,
     required double employeeFixedMonthlySalary,
     required double employeeHourlyRate,
+    required bool selfEmployedManualIncomeEntries,
+    required bool selfEmployedManualExpenseEntries,
   }) async {
     await _userRef(userId).set(
       {
@@ -46,6 +48,8 @@ class UserRepository {
         'employeeCompensationType': employeeCompensationType,
         'employeeFixedMonthlySalary': employeeFixedMonthlySalary,
         'employeeHourlyRate': employeeHourlyRate,
+        'selfEmployedManualIncomeEntries': selfEmployedManualIncomeEntries,
+        'selfEmployedManualExpenseEntries': selfEmployedManualExpenseEntries,
         'updatedAt': FieldValue.serverTimestamp(),
       },
       SetOptions(merge: true),

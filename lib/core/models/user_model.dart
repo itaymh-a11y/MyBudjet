@@ -13,6 +13,8 @@ class UserModel {
   final String employeeCompensationType; // 'fixed' | 'hourly'
   final double employeeFixedMonthlySalary;
   final double employeeHourlyRate;
+  final bool selfEmployedManualIncomeEntries;
+  final bool selfEmployedManualExpenseEntries;
   final DateTime? updatedAt;
 
   const UserModel({
@@ -28,6 +30,8 @@ class UserModel {
     this.employeeCompensationType = 'fixed',
     this.employeeFixedMonthlySalary = 0.0,
     this.employeeHourlyRate = 0.0,
+    this.selfEmployedManualIncomeEntries = false,
+    this.selfEmployedManualExpenseEntries = false,
     this.updatedAt,
   });
 
@@ -47,6 +51,10 @@ class UserModel {
       employeeFixedMonthlySalary:
           (map['employeeFixedMonthlySalary'] as num?)?.toDouble() ?? 0.0,
       employeeHourlyRate: (map['employeeHourlyRate'] as num?)?.toDouble() ?? 0.0,
+      selfEmployedManualIncomeEntries:
+          map['selfEmployedManualIncomeEntries'] as bool? ?? false,
+      selfEmployedManualExpenseEntries:
+          map['selfEmployedManualExpenseEntries'] as bool? ?? false,
       updatedAt: (map['updatedAt'] as Timestamp?)?.toDate(),
     );
   }
@@ -68,6 +76,8 @@ class UserModel {
       'employeeCompensationType': employeeCompensationType,
       'employeeFixedMonthlySalary': employeeFixedMonthlySalary,
       'employeeHourlyRate': employeeHourlyRate,
+      'selfEmployedManualIncomeEntries': selfEmployedManualIncomeEntries,
+      'selfEmployedManualExpenseEntries': selfEmployedManualExpenseEntries,
       'updatedAt': Timestamp.fromDate(updatedAt ?? DateTime.now()),
     };
   }

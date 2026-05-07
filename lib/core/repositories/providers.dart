@@ -304,6 +304,44 @@ final workHoursForMonthProvider =
   );
 });
 
+final businessIncomeEntriesForMonthProvider =
+    FutureProvider.family<List<BusinessIncomeEntry>, PensionMonthKey>(
+        (ref, key) async {
+  final user = ref.watch(currentAuthUserProvider);
+  if (user == null) return [];
+  final profileAsync = ref.watch(currentUserProfileProvider);
+  final startDay = profileAsync.maybeWhen(
+    data: (profile) => profile?.businessCycleStartDay ?? 1,
+    orElse: () => 1,
+  );
+  final range = businessCycleRangeFromKey(key, startDay: startDay);
+  final repo = ref.watch(pensionRepositoryProvider);
+  return repo.getBusinessIncomeForRange(
+    userId: user.uid,
+    start: range.start,
+    end: range.end,
+  );
+});
+
+final businessExpenseEntriesForMonthProvider =
+    FutureProvider.family<List<BusinessExpenseEntry>, PensionMonthKey>(
+        (ref, key) async {
+  final user = ref.watch(currentAuthUserProvider);
+  if (user == null) return [];
+  final profileAsync = ref.watch(currentUserProfileProvider);
+  final startDay = profileAsync.maybeWhen(
+    data: (profile) => profile?.businessCycleStartDay ?? 1,
+    orElse: () => 1,
+  );
+  final range = businessCycleRangeFromKey(key, startDay: startDay);
+  final repo = ref.watch(pensionRepositoryProvider);
+  return repo.getBusinessExpensesForRange(
+    userId: user.uid,
+    start: range.start,
+    end: range.end,
+  );
+});
+
 final personalExpensesForMonthProvider =
     FutureProvider.family<List<PersonalExpense>, PensionMonthKey>(
         (ref, key) async {

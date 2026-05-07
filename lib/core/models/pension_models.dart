@@ -87,3 +87,76 @@ class WorkHoursEntry {
   }
 }
 
+class BusinessIncomeEntry {
+  final String id;
+  final String userId;
+  final DateTime date;
+  final double amount;
+  final DateTime createdAt;
+
+  const BusinessIncomeEntry({
+    required this.id,
+    required this.userId,
+    required this.date,
+    required this.amount,
+    required this.createdAt,
+  });
+
+  factory BusinessIncomeEntry.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
+    final data = doc.data() ?? {};
+    return BusinessIncomeEntry(
+      id: doc.id,
+      userId: data['userId'] as String? ?? '',
+      date: (data['date'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      amount: (data['amount'] as num?)?.toDouble() ?? 0.0,
+      createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'userId': userId,
+      'date': Timestamp.fromDate(date),
+      'amount': amount,
+      'createdAt': Timestamp.fromDate(createdAt),
+    };
+  }
+}
+
+class BusinessExpenseEntry {
+  final String id;
+  final String userId;
+  final DateTime date;
+  final double amount;
+  final DateTime createdAt;
+
+  const BusinessExpenseEntry({
+    required this.id,
+    required this.userId,
+    required this.date,
+    required this.amount,
+    required this.createdAt,
+  });
+
+  factory BusinessExpenseEntry.fromDoc(
+      DocumentSnapshot<Map<String, dynamic>> doc) {
+    final data = doc.data() ?? {};
+    return BusinessExpenseEntry(
+      id: doc.id,
+      userId: data['userId'] as String? ?? '',
+      date: (data['date'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      amount: (data['amount'] as num?)?.toDouble() ?? 0.0,
+      createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'userId': userId,
+      'date': Timestamp.fromDate(date),
+      'amount': amount,
+      'createdAt': Timestamp.fromDate(createdAt),
+    };
+  }
+}
+

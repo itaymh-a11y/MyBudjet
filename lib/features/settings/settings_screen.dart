@@ -25,6 +25,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   int _personalCycleStartDay = 10;
   int _businessCycleStartDay = 1;
   String _employeeCompensationType = 'fixed';
+  bool _selfEmployedManualIncomeEntries = false;
+  bool _selfEmployedManualExpenseEntries = false;
 
   @override
   void initState() {
@@ -68,6 +70,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           (user?.employeeFixedMonthlySalary ?? 0.0).toStringAsFixed(0);
       _employeeHourlyRateController.text =
           (user?.employeeHourlyRate ?? 0.0).toStringAsFixed(2);
+      _selfEmployedManualIncomeEntries =
+          user?.selfEmployedManualIncomeEntries ?? false;
+      _selfEmployedManualExpenseEntries =
+          user?.selfEmployedManualExpenseEntries ?? false;
       _isLoading = false;
     });
   }
@@ -105,6 +111,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             employeeCompensationType: _employeeCompensationType,
             employeeFixedMonthlySalary: employeeFixedSalary,
             employeeHourlyRate: employeeHourlyRate,
+            selfEmployedManualIncomeEntries: _selfEmployedManualIncomeEntries,
+            selfEmployedManualExpenseEntries: _selfEmployedManualExpenseEntries,
           );
       ref.invalidate(currentUserProfileProvider);
 
@@ -171,6 +179,38 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         setState(() => _selectedUserType = value);
                       },
                     ),
+                    if (_selectedUserType == 'selfEmployed') ...[
+                      const SizedBox(height: 8),
+                      Card(
+                        color: theme.colorScheme.surfaceContainerHighest
+                            .withOpacity(0.35),
+                        child: Column(
+                          children: [
+                            SwitchListTile(
+                              title: const Text('הזנת הכנסות ידנית (עם +)'),
+                              subtitle: const Text(
+                                'כאשר פעיל, תתווסף אפשרות להוסיף הכנסות לפי תאריך וסכום',
+                              ),
+                              value: _selfEmployedManualIncomeEntries,
+                              onChanged: (value) => setState(
+                                () => _selfEmployedManualIncomeEntries = value,
+                              ),
+                            ),
+                            const Divider(height: 1),
+                            SwitchListTile(
+                              title: const Text('הזנת הוצאות עסקיות ידנית (עם +)'),
+                              subtitle: const Text(
+                                'כאשר פעיל, תתווסף אפשרות להוסיף הוצאות עסקיות לפי תאריך וסכום',
+                              ),
+                              value: _selfEmployedManualExpenseEntries,
+                              onChanged: (value) => setState(
+                                () => _selfEmployedManualExpenseEntries = value,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                     if (_selectedUserType == 'employee') ...[
                       const SizedBox(height: 8),
                       DropdownButtonFormField<String>(

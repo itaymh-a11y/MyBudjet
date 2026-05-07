@@ -106,6 +106,10 @@ class _SavingsPlanScreenState extends ConsumerState<SavingsPlanScreen> {
       employeeCompensationType: currentProfile.employeeCompensationType,
       employeeFixedMonthlySalary: currentProfile.employeeFixedMonthlySalary,
       employeeHourlyRate: currentProfile.employeeHourlyRate,
+      selfEmployedManualIncomeEntries:
+          currentProfile.selfEmployedManualIncomeEntries,
+      selfEmployedManualExpenseEntries:
+          currentProfile.selfEmployedManualExpenseEntries,
     );
     ref.invalidate(currentUserProfileProvider);
 
