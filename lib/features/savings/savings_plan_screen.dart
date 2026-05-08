@@ -370,9 +370,9 @@ class _SavingsPlanScreenState extends ConsumerState<SavingsPlanScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.chevron_right),
-                    onPressed: _goToPrevMonth,
-                    tooltip: 'חודש קודם',
+                    icon: const Icon(Icons.chevron_left),
+                    onPressed: _goToNextMonth,
+                    tooltip: 'חודש הבא',
                   ),
                   Column(
                     children: [
@@ -388,9 +388,9 @@ class _SavingsPlanScreenState extends ConsumerState<SavingsPlanScreen> {
                     ],
                   ),
                   IconButton(
-                    icon: const Icon(Icons.chevron_left),
-                    onPressed: _goToNextMonth,
-                    tooltip: 'חודש הבא',
+                    icon: const Icon(Icons.chevron_right),
+                    onPressed: _goToPrevMonth,
+                    tooltip: 'חודש קודם',
                   ),
                 ],
               ),
