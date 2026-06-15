@@ -3,9 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/constants/business_professions.dart';
+import '../../core/models/fixed_monthly_models.dart';
+import '../../core/models/gross_deduction_models.dart';
 import '../../core/models/pension_models.dart';
 import '../../core/models/date_helpers.dart';
 import '../../core/repositories/providers.dart';
+import 'student_income_panel.dart';
 
 class PensionScreen extends ConsumerStatefulWidget {
   const PensionScreen({super.key});
@@ -150,6 +153,7 @@ class _PensionScreenState extends ConsumerState<PensionScreen> {
       data: (profile) => profile?.businessIconName,
       orElse: () => BusinessProfessionCatalog.defaultIconName,
     );
+    final isStudent = userType == 'student';
     final isSelfEmployed = userType == 'selfEmployed';
     final selfEmployedManualIncomeEntries = userProfileAsync.maybeWhen(
       data: (profile) => profile?.selfEmployedManualIncomeEntries ?? false,
@@ -159,6 +163,16 @@ class _PensionScreenState extends ConsumerState<PensionScreen> {
       data: (profile) => profile?.selfEmployedManualExpenseEntries ?? false,
       orElse: () => false,
     );
+    final grossDeductions = userProfileAsync.maybeWhen(
+      data: (profile) => profile?.grossDeductions ?? const [],
+      orElse: () => const <FixedGrossDeduction>[],
+    );
+    final fixedMonthlyItems = userProfileAsync.maybeWhen(
+      data: (profile) => profile?.fixedMonthlyItems ?? const [],
+      orElse: () => const <FixedMonthlyItem>[],
+    );
+    final activeFixedAdditions = fixedAdditions(fixedMonthlyItems);
+    final activeFixedExpenses = fixedExpenses(fixedMonthlyItems);
 
     return Scaffold(
       appBar: AppBar(
@@ -182,9 +196,9 @@ class _PensionScreenState extends ConsumerState<PensionScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     IconButton(
-                      icon: const Icon(Icons.chevron_right),
-                      onPressed: _goToPrevMonth,
-                      tooltip: 'חודש קודם',
+                      icon: const Icon(Icons.chevron_left),
+                      onPressed: _goToNextMonth,
+                      tooltip: 'חודש הבא',
                     ),
                     Column(
                       children: [
@@ -203,9 +217,9 @@ class _PensionScreenState extends ConsumerState<PensionScreen> {
                       ],
                     ),
                     IconButton(
-                      icon: const Icon(Icons.chevron_left),
-                      onPressed: _goToNextMonth,
-                      tooltip: 'חודש הבא',
+                      icon: const Icon(Icons.chevron_right),
+                      onPressed: _goToPrevMonth,
+                      tooltip: 'חודש קודם',
                     ),
                   ],
                 ),
@@ -213,7 +227,9 @@ class _PensionScreenState extends ConsumerState<PensionScreen> {
             ),
             const SizedBox(height: 16),
             Expanded(
-              child: ListView(
+              child: isStudent
+                  ? StudentIncomePanel(selectedKey: selectedKey)
+                  : ListView(
                 children: [
                   monthAsync.when(
                     data: (month) {
@@ -267,20 +283,32 @@ class _PensionScreenState extends ConsumerState<PensionScreen> {
                         0,
                         (sum, e) => sum + (e.hours * e.hourlyRateSnapshot),
                       );
-                      final gross = userType == 'selfEmployed'
+                      final grossBase = userType == 'selfEmployed'
                           ? (selfEmployedManualIncomeEntries
                               ? manualIncomeGross
                               : parsedGross)
                           : (employeeCompensationType == 'hourly'
                               ? hourlyGross
                               : employeeFixedSalary);
-                      final expenses =
+                      final expensesBase =
                           userType == 'selfEmployed'
                               ? (selfEmployedManualExpenseEntries
                                   ? manualExpenseTotal
                                   : parsedExpenses)
                               : 0.0;
-                      final net = gross - expenses;
+                      final fixedAdditionsTotal =
+                          totalFixedAdditionAmount(fixedMonthlyItems);
+                      final fixedExpensesTotal =
+                          totalFixedExpenseAmount(fixedMonthlyItems);
+                      final gross = grossBase + fixedAdditionsTotal;
+                      final expenses = expensesBase + fixedExpensesTotal;
+                      final deductionSnapshots = computeGrossDeductionSnapshots(
+                        gross: gross,
+                        deductions: grossDeductions,
+                      );
+                      final totalDeductions =
+                          totalGrossDeductionAmount(deductionSnapshots);
+                      final net = gross - totalDeductions - expenses;
                       final netColor = net >= 0 ? Colors.green : Colors.red;
 
                       return Column(
@@ -326,6 +354,21 @@ class _PensionScreenState extends ConsumerState<PensionScreen> {
                                 entries: businessExpenseEntries,
                                 total: manualExpenseTotal,
                               ),
+                            if (fixedExpensesTotal > 0) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                'הוצאות קבועות (מהגדרות): ${fixedExpensesTotal.toStringAsFixed(0)} ₪',
+                                style: TextStyle(
+                                  color: Theme.of(context).colorScheme.error,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              if (expensesBase > 0)
+                                Text(
+                                  'סה״כ הוצאות לחודש: ${expenses.toStringAsFixed(0)} ₪',
+                                  style: const TextStyle(fontWeight: FontWeight.w700),
+                                ),
+                            ],
                           ] else if (employeeCompensationType == 'fixed') ...[
                             Card(
                               color: Theme.of(context)
@@ -334,8 +377,30 @@ class _PensionScreenState extends ConsumerState<PensionScreen> {
                                   .withOpacity(0.35),
                               child: Padding(
                                 padding: const EdgeInsets.all(12),
-                                child: Text(
-                                  'שכר גלובלי חודשי: ${employeeFixedSalary.toStringAsFixed(0)} ₪',
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  children: [
+                                    Text(
+                                      'שכר גלובלי חודשי: ${employeeFixedSalary.toStringAsFixed(0)} ₪',
+                                    ),
+                                    if (fixedAdditionsTotal > 0) ...[
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        'תוספות קבועות: +${fixedAdditionsTotal.toStringAsFixed(0)} ₪',
+                                        style: TextStyle(
+                                          color: Colors.green.shade700,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        'סה״כ ברוטו: ${gross.toStringAsFixed(0)} ₪',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ],
+                                  ],
                                 ),
                               ),
                             ),
@@ -359,6 +424,23 @@ class _PensionScreenState extends ConsumerState<PensionScreen> {
                                       'שכר מצטבר למחזור: ${hourlyGross.toStringAsFixed(0)} ₪',
                                       style: const TextStyle(fontWeight: FontWeight.w700),
                                     ),
+                                    if (fixedAdditionsTotal > 0) ...[
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        'תוספות קבועות: +${fixedAdditionsTotal.toStringAsFixed(0)} ₪',
+                                        style: TextStyle(
+                                          color: Colors.green.shade700,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        'סה״כ ברוטו: ${gross.toStringAsFixed(0)} ₪',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ],
                                     const SizedBox(height: 8),
                                     ElevatedButton.icon(
                                       onPressed: employeeHourlyRate <= 0
@@ -415,6 +497,83 @@ class _PensionScreenState extends ConsumerState<PensionScreen> {
                               error: (e, _) => Text('שגיאה בטעינת שעות: $e'),
                             ),
                           ],
+                          if (grossBase > 0 ||
+                              fixedAdditionsTotal > 0 ||
+                              expenses > 0) ...[
+                            const SizedBox(height: 12),
+                            Card(
+                              child: Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  children: [
+                                    Text(
+                                      'פירוט הכנסה',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleSmall
+                                          ?.copyWith(fontWeight: FontWeight.w700),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    if (grossBase > 0)
+                                      _buildBreakdownRow(
+                                        context,
+                                        label: userType == 'employee'
+                                            ? 'שכר בסיס'
+                                            : 'הכנסה ברוטו',
+                                        amount: grossBase,
+                                        emphasize: false,
+                                      ),
+                                    for (final item in activeFixedAdditions)
+                                      _buildBreakdownRow(
+                                        context,
+                                        label: '${item.name} (קבוע)',
+                                        amount: item.amount,
+                                        emphasize: false,
+                                        muted: true,
+                                        isCredit: true,
+                                      ),
+                                    if (deductionSnapshots.isNotEmpty) ...[
+                                      const Divider(height: 16),
+                                      for (final line in deductionSnapshots)
+                                        _buildBreakdownRow(
+                                          context,
+                                          label:
+                                              '${line.name} (${line.percentage.toStringAsFixed(line.percentage.truncateToDouble() == line.percentage ? 0 : 1)}%)',
+                                          amount: -line.amount,
+                                          emphasize: false,
+                                          muted: true,
+                                        ),
+                                    ],
+                                    if (userType == 'selfEmployed' &&
+                                        expensesBase > 0)
+                                      _buildBreakdownRow(
+                                        context,
+                                        label: 'הוצאות משתנות',
+                                        amount: -expensesBase,
+                                        emphasize: false,
+                                        muted: true,
+                                      ),
+                                    for (final item in activeFixedExpenses)
+                                      _buildBreakdownRow(
+                                        context,
+                                        label: '${item.name} (קבוע)',
+                                        amount: -item.amount,
+                                        emphasize: false,
+                                        muted: true,
+                                      ),
+                                    const Divider(height: 16),
+                                    _buildBreakdownRow(
+                                      context,
+                                      label: 'נטו',
+                                      amount: net,
+                                      emphasize: true,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
                           const SizedBox(height: 12),
                           Card(
                             color: netColor.withOpacity(0.1),
@@ -455,7 +614,7 @@ class _PensionScreenState extends ConsumerState<PensionScreen> {
                               }
                               _saveMonth(
                                 selectedKey,
-                                forcedGross: gross,
+                                forcedGross: grossBase,
                                 forcedExpenses: 0,
                               );
                             },
@@ -608,6 +767,47 @@ class _PensionScreenState extends ConsumerState<PensionScreen> {
     );
   }
 
+  Widget _buildBreakdownRow(
+    BuildContext context, {
+    required String label,
+    required double amount,
+    required bool emphasize,
+    bool muted = false,
+    bool isCredit = false,
+  }) {
+    final theme = Theme.of(context);
+    final color = amount < 0
+        ? theme.colorScheme.error
+        : (emphasize
+            ? theme.colorScheme.primary
+            : (isCredit ? Colors.green.shade700 : null));
+    final prefix = amount < 0 ? '−' : (isCredit ? '+' : '');
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: emphasize
+                ? theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)
+                : (muted ? theme.textTheme.bodyMedium : theme.textTheme.bodyLarge),
+          ),
+          Text(
+            '$prefix${amount.abs().toStringAsFixed(0)} ₪',
+            style: (emphasize
+                    ? theme.textTheme.titleMedium
+                    : theme.textTheme.bodyLarge)
+                ?.copyWith(
+              fontWeight: emphasize ? FontWeight.w700 : FontWeight.w500,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   double _parseController(TextEditingController c) {
     final text = c.text.trim().replaceAll(',', '.');
     return double.tryParse(text) ?? 0;
@@ -621,9 +821,25 @@ class _PensionScreenState extends ConsumerState<PensionScreen> {
     final auth = ref.read(currentAuthUserProvider);
     if (auth == null) return;
 
-    final gross = forcedGross ?? _parseController(_grossController);
-    final expenses = forcedExpenses ?? _parseController(_expensesController);
-    final net = gross - expenses;
+    final grossBase = forcedGross ?? _parseController(_grossController);
+    final expensesBase =
+        forcedExpenses ?? _parseController(_expensesController);
+    final profile = ref.read(currentUserProfileProvider).maybeWhen(
+          data: (user) => user,
+          orElse: () => null,
+        );
+    final fixedItems = profile?.fixedMonthlyItems ?? const [];
+    final fixedAdditionsTotal = totalFixedAdditionAmount(fixedItems);
+    final fixedExpensesTotal = totalFixedExpenseAmount(fixedItems);
+    final gross = grossBase + fixedAdditionsTotal;
+    final expenses = expensesBase + fixedExpensesTotal;
+    final fixedSnapshots = snapshotsFromItems(fixedItems);
+    final deductionSnapshots = computeGrossDeductionSnapshots(
+      gross: gross,
+      deductions: profile?.grossDeductions ?? const [],
+    );
+    final totalDeductions = totalGrossDeductionAmount(deductionSnapshots);
+    final net = gross - totalDeductions - expenses;
 
     final repo = ref.read(pensionRepositoryProvider);
     final id = '${key.year}-${key.month.toString().padLeft(2, '0')}';
@@ -633,6 +849,11 @@ class _PensionScreenState extends ConsumerState<PensionScreen> {
       year: key.year,
       month: key.month,
       grossIncome: gross,
+      totalGrossDeductions: totalDeductions,
+      grossDeductionSnapshots: deductionSnapshots,
+      totalFixedAdditions: fixedAdditionsTotal,
+      totalFixedExpenses: fixedExpensesTotal,
+      fixedMonthlySnapshots: fixedSnapshots,
       totalExpenses: expenses,
       netProfit: net,
     );

@@ -9,7 +9,9 @@ import '../models/user_model.dart';
 import 'pension_repository.dart';
 import 'personal_repository.dart';
 import 'savings_repository.dart';
+import 'student_income_repository.dart';
 import 'user_repository.dart';
+import '../models/student_models.dart';
 import '../models/savings_models.dart';
 import '../personal/ideal_budget_logic.dart';
 
@@ -43,6 +45,11 @@ final personalRepositoryProvider = Provider<PersonalRepository>((ref) {
 final pensionRepositoryProvider = Provider<PensionRepository>((ref) {
   final firestore = ref.watch(firestoreProvider);
   return PensionRepository(firestore);
+});
+
+final studentIncomeRepositoryProvider = Provider<StudentIncomeRepository>((ref) {
+  final firestore = ref.watch(firestoreProvider);
+  return StudentIncomeRepository(firestore);
 });
 
 final savingsRepositoryProvider = Provider<SavingsRepository>((ref) {
@@ -359,6 +366,32 @@ final personalExpensesForMonthProvider =
     start: range.start,
     end: range.end,
   );
+});
+
+final incomeWorkLogsForMonthProvider =
+    FutureProvider.family<List<IncomeWorkLog>, PensionMonthKey>((ref, key) async {
+  final user = ref.watch(currentAuthUserProvider);
+  if (user == null) return [];
+  final profileAsync = ref.watch(currentUserProfileProvider);
+  final startDay = profileAsync.maybeWhen(
+    data: (profile) => profile?.businessCycleStartDay ?? 1,
+    orElse: () => 1,
+  );
+  final range = businessCycleRangeFromKey(key, startDay: startDay);
+  final repo = ref.watch(studentIncomeRepositoryProvider);
+  return repo.getWorkLogsForRange(
+    userId: user.uid,
+    start: range.start,
+    end: range.end,
+  );
+});
+
+/// כל המלגות הרשומות לסטודנט (שנתיות — לא לפי מחזור הכנסות).
+final scholarshipEntriesProvider = FutureProvider<List<ScholarshipEntry>>((ref) async {
+  final user = ref.watch(currentAuthUserProvider);
+  if (user == null) return [];
+  final repo = ref.watch(studentIncomeRepositoryProvider);
+  return repo.getAllScholarships(user.uid);
 });
 
 final recentPensionMonthsProvider =

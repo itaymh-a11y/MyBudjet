@@ -1,5 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'fixed_monthly_models.dart';
+import 'gross_deduction_models.dart';
+import 'student_models.dart';
+
 class UserModel {
   final String uid;
   final String? email;
@@ -15,6 +19,9 @@ class UserModel {
   final double employeeHourlyRate;
   final bool selfEmployedManualIncomeEntries;
   final bool selfEmployedManualExpenseEntries;
+  final List<FixedGrossDeduction> grossDeductions;
+  final List<FixedMonthlyItem> fixedMonthlyItems;
+  final List<IncomeSource> incomeSources;
   final DateTime? updatedAt;
 
   const UserModel({
@@ -32,6 +39,9 @@ class UserModel {
     this.employeeHourlyRate = 0.0,
     this.selfEmployedManualIncomeEntries = false,
     this.selfEmployedManualExpenseEntries = false,
+    this.grossDeductions = const [],
+    this.fixedMonthlyItems = const [],
+    this.incomeSources = const [],
     this.updatedAt,
   });
 
@@ -55,6 +65,10 @@ class UserModel {
           map['selfEmployedManualIncomeEntries'] as bool? ?? false,
       selfEmployedManualExpenseEntries:
           map['selfEmployedManualExpenseEntries'] as bool? ?? false,
+      grossDeductions: fixedGrossDeductionsFromFirestore(map['grossDeductions']),
+      fixedMonthlyItems:
+          fixedMonthlyItemsFromFirestore(map['fixedMonthlyItems']),
+      incomeSources: incomeSourcesFromFirestore(map['incomeSources']),
       updatedAt: (map['updatedAt'] as Timestamp?)?.toDate(),
     );
   }
@@ -78,6 +92,9 @@ class UserModel {
       'employeeHourlyRate': employeeHourlyRate,
       'selfEmployedManualIncomeEntries': selfEmployedManualIncomeEntries,
       'selfEmployedManualExpenseEntries': selfEmployedManualExpenseEntries,
+      'grossDeductions': fixedGrossDeductionsToFirestore(grossDeductions),
+      'fixedMonthlyItems': fixedMonthlyItemsToFirestore(fixedMonthlyItems),
+      'incomeSources': incomeSourcesToFirestore(incomeSources),
       'updatedAt': Timestamp.fromDate(updatedAt ?? DateTime.now()),
     };
   }

@@ -110,6 +110,9 @@ class _SavingsPlanScreenState extends ConsumerState<SavingsPlanScreen> {
           currentProfile.selfEmployedManualIncomeEntries,
       selfEmployedManualExpenseEntries:
           currentProfile.selfEmployedManualExpenseEntries,
+      grossDeductions: currentProfile.grossDeductions,
+      fixedMonthlyItems: currentProfile.fixedMonthlyItems,
+      incomeSources: currentProfile.incomeSources,
     );
     ref.invalidate(currentUserProfileProvider);
 
@@ -227,10 +230,7 @@ class _SavingsPlanScreenState extends ConsumerState<SavingsPlanScreen> {
     final baseIncome = pensionAsync.maybeWhen(
       data: (p) {
         if (p == null) return null;
-        return userProfileAsync.maybeWhen(
-          data: (u) => u?.userType == 'employee' ? p.grossIncome : p.netProfit,
-          orElse: () => p.netProfit,
-        );
+        return p.netProfit;
       },
       orElse: () => null,
     );
@@ -420,12 +420,7 @@ class _SavingsPlanScreenState extends ConsumerState<SavingsPlanScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              '${userProfileAsync.maybeWhen(
-                                            data: (u) => u?.userType == 'employee',
-                                            orElse: () => false,
-                                          )
-                                      ? 'הכנסה משכר (אותו חודש): '
-                                      : 'הכנסה נטו עסקית (אותו חודש): '}${baseIncome?.toStringAsFixed(0) ?? '0'} ₪',
+                              'הכנסה נטו (אותו חודש): ${baseIncome?.toStringAsFixed(0) ?? '0'} ₪',
                               style: Theme.of(context).textTheme.titleMedium,
                             ),
                             if (deductPersonal) ...[

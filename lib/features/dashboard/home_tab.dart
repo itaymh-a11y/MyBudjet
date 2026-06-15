@@ -37,6 +37,13 @@ class HomeTab extends ConsumerWidget {
       data: (profile) => profile?.businessIconName,
       orElse: () => BusinessProfessionCatalog.defaultIconName,
     );
+    final userType = userProfileAsync.maybeWhen(
+      data: (profile) => profile?.userType ?? 'selfEmployed',
+      orElse: () => 'selfEmployed',
+    );
+    final isStudent = userType == 'student';
+    final scholarshipsAsync =
+        isStudent ? ref.watch(scholarshipEntriesProvider) : null;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -163,7 +170,9 @@ class HomeTab extends ConsumerWidget {
                             ),
                             const SizedBox(width: 8),
                             Text(
-                              '$businessTabName – חודש נוכחי',
+                              isStudent
+                                  ? 'הכנסות מעבודה – חודש נוכחי'
+                                  : '$businessTabName – חודש נוכחי',
                               style: theme.textTheme.titleMedium?.copyWith(
                                 color: Colors.green.shade900,
                                 fontWeight: FontWeight.bold,
@@ -173,22 +182,115 @@ class HomeTab extends ConsumerWidget {
                         ),
                         const SizedBox(height: 12),
                         if (month != null) ...[
+                          if (isStudent && month.incomeSourceSnapshots.isNotEmpty)
+                            for (final source in month.incomeSourceSnapshots)
+                              Text(
+                                source.hours > 0
+                                    ? '${source.name}: ${source.hours.toStringAsFixed(1)} שע׳ • ${source.amount.toStringAsFixed(0)} ₪'
+                                    : '${source.name}: ${source.amount.toStringAsFixed(0)} ₪',
+                                style: theme.textTheme.bodySmall,
+                              ),
                           Text(
-                            'ברוטו: ${month.grossIncome.toStringAsFixed(0)} ₪',
+                            isStudent
+                                ? 'ברוטו מעבודה: ${month.grossIncome.toStringAsFixed(0)} ₪'
+                                : 'ברוטו: ${month.grossIncome.toStringAsFixed(0)} ₪',
                             style: theme.textTheme.bodyMedium,
                           ),
-                          Text(
-                            'הוצאות: ${month.totalExpenses.toStringAsFixed(0)} ₪',
-                            style: theme.textTheme.bodyMedium,
-                          ),
+                          if (month.fixedMonthlySnapshots.isNotEmpty)
+                            for (final line in month.fixedMonthlySnapshots)
+                              Text(
+                                line.isAddition
+                                    ? '${line.name}: +${line.amount.toStringAsFixed(0)} ₪'
+                                    : '${line.name}: −${line.amount.toStringAsFixed(0)} ₪',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: line.isAddition
+                                      ? Colors.green.shade700
+                                      : null,
+                                ),
+                              )
+                          else ...[
+                            if (month.totalFixedAdditions > 0)
+                              Text(
+                                'תוספות קבועות: +${month.totalFixedAdditions.toStringAsFixed(0)} ₪',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: Colors.green.shade700,
+                                ),
+                              ),
+                            if (month.totalFixedExpenses > 0)
+                              Text(
+                                'הוצאות קבועות: −${month.totalFixedExpenses.toStringAsFixed(0)} ₪',
+                                style: theme.textTheme.bodySmall,
+                              ),
+                          ],
+                          if (month.grossDeductionSnapshots.isNotEmpty)
+                            for (final line in month.grossDeductionSnapshots)
+                              Text(
+                                '${line.name}: −${line.amount.toStringAsFixed(0)} ₪',
+                                style: theme.textTheme.bodySmall,
+                              )
+                          else if (month.totalGrossDeductions > 0)
+                            Text(
+                              'הורדות מהברוטו: −${month.totalGrossDeductions.toStringAsFixed(0)} ₪',
+                              style: theme.textTheme.bodySmall,
+                            ),
+                          if (month.totalExpenses > 0)
+                            Text(
+                              'הוצאות: ${month.totalExpenses.toStringAsFixed(0)} ₪',
+                              style: theme.textTheme.bodyMedium,
+                            ),
                           const SizedBox(height: 8),
                           Text(
-                            'רווח נטו: ${net.toStringAsFixed(0)} ₪',
+                            isStudent
+                                ? 'נטו מעבודה (בסיס חיסכון): ${net.toStringAsFixed(0)} ₪'
+                                : 'רווח נטו: ${net.toStringAsFixed(0)} ₪',
                             style: theme.textTheme.titleMedium?.copyWith(
                               color: netColor,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
+                          if (isStudent && scholarshipsAsync != null) ...[
+                            const SizedBox(height: 12),
+                            scholarshipsAsync.when(
+                              data: (entries) {
+                                if (entries.isEmpty) {
+                                  return const SizedBox.shrink();
+                                }
+                                final scholarshipTotal = entries.fold<double>(
+                                  0,
+                                  (sum, entry) => sum + entry.amount,
+                                );
+                                final next = entries.firstWhere(
+                                  (entry) {
+                                    final now = DateTime.now();
+                                    return entry.expectedYear > now.year ||
+                                        (entry.expectedYear == now.year &&
+                                            entry.expectedMonth >= now.month);
+                                  },
+                                  orElse: () => entries.last,
+                                );
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'מלגות רשומות: ${entries.length} • '
+                                      '${scholarshipTotal.toStringAsFixed(0)} ₪ שנתי',
+                                      style: theme.textTheme.titleSmall?.copyWith(
+                                        color: Colors.amber.shade900,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      'קבלה צפויה הבאה: ${next.expectedMonthLabel}',
+                                      style: theme.textTheme.bodySmall,
+                                    ),
+                                  ],
+                                );
+                              },
+                              loading: () => const SizedBox.shrink(),
+                              error: (_, __) => const SizedBox.shrink(),
+                            ),
+                          ],
                         ] else
                           Text(
                             'טרם הוזנו נתונים לחודש זה',

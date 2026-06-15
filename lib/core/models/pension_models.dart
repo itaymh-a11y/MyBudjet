@@ -1,11 +1,21 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'fixed_monthly_models.dart';
+import 'gross_deduction_models.dart';
+import 'student_models.dart';
+
 class PensionMonth {
   final String id;
   final String userId;
   final int year;
   final int month;
   final double grossIncome;
+  final double totalGrossDeductions;
+  final List<GrossDeductionSnapshot> grossDeductionSnapshots;
+  final double totalFixedAdditions;
+  final double totalFixedExpenses;
+  final List<FixedMonthlySnapshot> fixedMonthlySnapshots;
+  final List<IncomeSourceMonthSnapshot> incomeSourceSnapshots;
   final double totalExpenses;
   final double netProfit;
 
@@ -15,6 +25,12 @@ class PensionMonth {
     required this.year,
     required this.month,
     required this.grossIncome,
+    this.totalGrossDeductions = 0,
+    this.grossDeductionSnapshots = const [],
+    this.totalFixedAdditions = 0,
+    this.totalFixedExpenses = 0,
+    this.fixedMonthlySnapshots = const [],
+    this.incomeSourceSnapshots = const [],
     required this.totalExpenses,
     required this.netProfit,
   });
@@ -29,6 +45,21 @@ class PensionMonth {
       year: data['year'] as int? ?? DateTime.now().year,
       month: data['month'] as int? ?? DateTime.now().month,
       grossIncome: (data['grossIncome'] as num?)?.toDouble() ?? 0,
+      totalGrossDeductions:
+          (data['totalGrossDeductions'] as num?)?.toDouble() ?? 0,
+      grossDeductionSnapshots: grossDeductionSnapshotsFromFirestore(
+        data['grossDeductionSnapshots'],
+      ),
+      totalFixedAdditions:
+          (data['totalFixedAdditions'] as num?)?.toDouble() ?? 0,
+      totalFixedExpenses:
+          (data['totalFixedExpenses'] as num?)?.toDouble() ?? 0,
+      fixedMonthlySnapshots: fixedMonthlySnapshotsFromFirestore(
+        data['fixedMonthlySnapshots'],
+      ),
+      incomeSourceSnapshots: incomeSourceSnapshotsFromFirestore(
+        data['incomeSourceSnapshots'],
+      ),
       totalExpenses: (data['totalExpenses'] as num?)?.toDouble() ?? 0,
       netProfit: (data['netProfit'] as num?)?.toDouble() ?? 0,
     );
@@ -40,6 +71,15 @@ class PensionMonth {
       'year': year,
       'month': month,
       'grossIncome': grossIncome,
+      'totalGrossDeductions': totalGrossDeductions,
+      'grossDeductionSnapshots':
+          grossDeductionSnapshots.map((item) => item.toMap()).toList(),
+      'totalFixedAdditions': totalFixedAdditions,
+      'totalFixedExpenses': totalFixedExpenses,
+      'fixedMonthlySnapshots':
+          fixedMonthlySnapshots.map((item) => item.toMap()).toList(),
+      'incomeSourceSnapshots':
+          incomeSourceSnapshots.map((item) => item.toMap()).toList(),
       'totalExpenses': totalExpenses,
       'netProfit': netProfit,
     };

@@ -23,6 +23,10 @@ class FirestorePaths {
       'users/$userId/business_income_entries';
   static String businessExpenseEntries(String userId) =>
       'users/$userId/business_expense_entries';
+  static String incomeWorkLogs(String userId) =>
+      'users/$userId/income_work_logs';
+  static String scholarshipEntries(String userId) =>
+      'users/$userId/scholarship_entries';
 
   // Savings plan
   static String savingsSettingsDoc(String userId) =>

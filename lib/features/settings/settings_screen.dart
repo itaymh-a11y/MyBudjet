@@ -3,6 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/constants/business_professions.dart';
+import '../../core/models/fixed_monthly_models.dart';
+import '../../core/models/gross_deduction_models.dart';
+import '../../core/models/student_models.dart';
 import '../../core/repositories/providers.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -27,6 +30,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   String _employeeCompensationType = 'fixed';
   bool _selfEmployedManualIncomeEntries = false;
   bool _selfEmployedManualExpenseEntries = false;
+  List<FixedGrossDeduction> _grossDeductions = const [];
+  List<FixedMonthlyItem> _fixedMonthlyItems = const [];
+  List<IncomeSource> _incomeSources = const [];
 
   @override
   void initState() {
@@ -74,6 +80,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           user?.selfEmployedManualIncomeEntries ?? false;
       _selfEmployedManualExpenseEntries =
           user?.selfEmployedManualExpenseEntries ?? false;
+      _grossDeductions = List<FixedGrossDeduction>.from(
+        user?.grossDeductions ?? const [],
+      );
+      _fixedMonthlyItems = List<FixedMonthlyItem>.from(
+        user?.fixedMonthlyItems ?? const [],
+      );
+      _incomeSources = List<IncomeSource>.from(
+        user?.incomeSources ?? const [],
+      );
       _isLoading = false;
     });
   }
@@ -113,6 +128,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             employeeHourlyRate: employeeHourlyRate,
             selfEmployedManualIncomeEntries: _selfEmployedManualIncomeEntries,
             selfEmployedManualExpenseEntries: _selfEmployedManualExpenseEntries,
+            grossDeductions: _grossDeductions,
+            fixedMonthlyItems: _fixedMonthlyItems,
+            incomeSources: _incomeSources,
           );
       ref.invalidate(currentUserProfileProvider);
 
@@ -179,6 +197,97 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         setState(() => _selectedUserType = value);
                       },
                     ),
+                    RadioListTile<String>(
+                      value: 'student',
+                      groupValue: _selectedUserType,
+                      title: const Text('סטודנט/ית'),
+                      subtitle: const Text('מספר עבודות מזדמנות + מלגות'),
+                      onChanged: (value) {
+                        if (value == null) return;
+                        setState(() => _selectedUserType = value);
+                      },
+                    ),
+                    if (_selectedUserType == 'student') ...[
+                      const SizedBox(height: 8),
+                      Card(
+                        color: theme.colorScheme.surfaceContainerHighest
+                            .withOpacity(0.35),
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Text(
+                                'מקורות הכנסה מעבודה',
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'הגדירי כל עבודה עם תעריף שעתי או שכר קבוע חודשי',
+                                style: theme.textTheme.bodySmall,
+                              ),
+                              const SizedBox(height: 12),
+                              if (_incomeSources.isEmpty)
+                                Text(
+                                  'אין מקורות הכנסה מוגדרים',
+                                  style: theme.textTheme.bodyMedium,
+                                ),
+                              for (final source in _incomeSources)
+                                Card(
+                                  margin: const EdgeInsets.only(bottom: 8),
+                                  child: ListTile(
+                                    leading: CircleAvatar(
+                                      child: Icon(
+                                        incomeSourceIconFromName(source.iconName),
+                                      ),
+                                    ),
+                                    title: Text(source.name),
+                                    subtitle: Text(
+                                      source.isHourly
+                                          ? '${source.hourlyRate.toStringAsFixed(0)} ₪ לשעה'
+                                          : '${source.fixedMonthlyAmount.toStringAsFixed(0)} ₪ קבוע לחודש',
+                                    ),
+                                    trailing: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        IconButton(
+                                          icon: const Icon(Icons.edit_outlined),
+                                          onPressed: () => _openIncomeSourceDialog(
+                                            existing: source,
+                                          ),
+                                        ),
+                                        IconButton(
+                                          icon: const Icon(Icons.delete_outline),
+                                          onPressed: () {
+                                            setState(() {
+                                              _incomeSources = _incomeSources
+                                                  .where(
+                                                    (item) =>
+                                                        item.id != source.id,
+                                                  )
+                                                  .toList();
+                                            });
+                                          },
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: TextButton.icon(
+                                  onPressed: () => _openIncomeSourceDialog(),
+                                  icon: const Icon(Icons.add),
+                                  label: const Text('הוספת מקור הכנסה'),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
                     if (_selectedUserType == 'selfEmployed') ...[
                       const SizedBox(height: 8),
                       Card(
@@ -258,6 +367,97 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           ),
                         ),
                     ],
+                    const SizedBox(height: 16),
+                    Card(
+                      color: theme.colorScheme.surfaceContainerHighest
+                          .withOpacity(0.35),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Text(
+                              'הורדות קבועות מהברוטו',
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'למשל פנסיה 10% — יקוזז מהברוטו לפני חישוב הנטו',
+                              style: theme.textTheme.bodySmall,
+                            ),
+                            const SizedBox(height: 12),
+                            if (_grossDeductions.isEmpty)
+                              Text(
+                                'אין הורדות מוגדרות',
+                                style: theme.textTheme.bodyMedium,
+                              ),
+                            for (final deduction in _grossDeductions)
+                              Card(
+                                margin: const EdgeInsets.only(bottom: 8),
+                                child: ListTile(
+                                  title: Text(deduction.name),
+                                  subtitle: Text(
+                                    '${deduction.percentage.toStringAsFixed(deduction.percentage.truncateToDouble() == deduction.percentage ? 0 : 1)}% מהברוטו',
+                                  ),
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        icon: const Icon(Icons.edit_outlined),
+                                        onPressed: () => _openDeductionDialog(
+                                          existing: deduction,
+                                        ),
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(Icons.delete_outline),
+                                        onPressed: () {
+                                          setState(() {
+                                            _grossDeductions = _grossDeductions
+                                                .where((d) => d.id != deduction.id)
+                                                .toList();
+                                          });
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: TextButton.icon(
+                                onPressed: () => _openDeductionDialog(),
+                                icon: const Icon(Icons.add),
+                                label: const Text('הוספת הורדה'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    _buildFixedMonthlyItemsCard(
+                      theme: theme,
+                      title: 'תוספות שכר קבועות',
+                      subtitle:
+                          'למשל נסיעות 500 ₪ — יתווסף אוטומטית לברוטו בכל חודש',
+                      items: _fixedMonthlyAdditions,
+                      type: 'addition',
+                      addLabel: 'הוספת תוספת שכר',
+                      emptyLabel: 'אין תוספות שכר קבועות',
+                    ),
+                    const SizedBox(height: 12),
+                    _buildFixedMonthlyItemsCard(
+                      theme: theme,
+                      title: 'הוצאות קבועות חודשיות',
+                      subtitle:
+                          'למשל שכירות 2,000 ₪ — תתווסף אוטומטית להוצאות בכל חודש',
+                      items: _fixedMonthlyExpenses,
+                      type: 'expense',
+                      addLabel: 'הוספת הוצאה קבועה',
+                      emptyLabel: 'אין הוצאות קבועות',
+                    ),
                     const SizedBox(height: 16),
                     Card(
                       color: theme.colorScheme.tertiaryContainer.withOpacity(0.35),
@@ -385,6 +585,449 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
             ),
     );
+  }
+
+  List<FixedMonthlyItem> get _fixedMonthlyAdditions =>
+      _fixedMonthlyItems.where((item) => item.isAddition).toList();
+
+  List<FixedMonthlyItem> get _fixedMonthlyExpenses =>
+      _fixedMonthlyItems.where((item) => item.isExpense).toList();
+
+  Widget _buildFixedMonthlyItemsCard({
+    required ThemeData theme,
+    required String title,
+    required String subtitle,
+    required List<FixedMonthlyItem> items,
+    required String type,
+    required String addLabel,
+    required String emptyLabel,
+  }) {
+    return Card(
+      color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.35),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              title,
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(subtitle, style: theme.textTheme.bodySmall),
+            const SizedBox(height: 12),
+            if (items.isEmpty)
+              Text(emptyLabel, style: theme.textTheme.bodyMedium),
+            for (final item in items)
+              Card(
+                margin: const EdgeInsets.only(bottom: 8),
+                child: ListTile(
+                  title: Text(item.name),
+                  subtitle: Text(
+                    '${item.amount.toStringAsFixed(0)} ₪ בכל חודש',
+                  ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.edit_outlined),
+                        onPressed: () => _openFixedMonthlyDialog(
+                          existing: item,
+                          type: type,
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline),
+                        onPressed: () {
+                          setState(() {
+                            _fixedMonthlyItems = _fixedMonthlyItems
+                                .where((entry) => entry.id != item.id)
+                                .toList();
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () => _openFixedMonthlyDialog(type: type),
+                icon: const Icon(Icons.add),
+                label: Text(addLabel),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openIncomeSourceDialog({IncomeSource? existing}) async {
+    final nameController = TextEditingController(text: existing?.name ?? '');
+    final rateController = TextEditingController(
+      text: existing == null
+          ? ''
+          : (existing.isHourly
+                  ? existing.hourlyRate
+                  : existing.fixedMonthlyAmount)
+              .toStringAsFixed(0),
+    );
+    var payType = existing?.payType ?? 'hourly';
+    var iconName = existing?.iconName ?? 'work';
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setLocalState) => AlertDialog(
+          title: Text(
+            existing == null ? 'הוספת מקור הכנסה' : 'עריכת מקור הכנסה',
+          ),
+          content: SizedBox(
+            width: 420,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nameController,
+                    decoration: const InputDecoration(
+                      labelText: 'שם העבודה',
+                      hintText: 'למשל: בייביסיטר',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    value: payType,
+                    decoration: const InputDecoration(
+                      labelText: 'סוג תשלום',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'hourly',
+                        child: Text('שעתי'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'fixedMonthly',
+                        child: Text('קבוע חודשי'),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setLocalState(() => payType = value);
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: rateController,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    decoration: InputDecoration(
+                      labelText: payType == 'hourly'
+                          ? 'שכר לשעה (₪)'
+                          : 'סכום חודשי קבוע (₪)',
+                      border: const OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Text(
+                      'סמל',
+                      style: Theme.of(context).textTheme.labelLarge,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final option in studentIncomeSourceIcons)
+                        InkWell(
+                          borderRadius: BorderRadius.circular(10),
+                          onTap: () => setLocalState(() => iconName = option.id),
+                          child: Container(
+                            width: 72,
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: iconName == option.id
+                                    ? Theme.of(context).colorScheme.primary
+                                    : Theme.of(context)
+                                        .colorScheme
+                                        .outlineVariant,
+                              ),
+                            ),
+                            child: Column(
+                              children: [
+                                Icon(option.icon, size: 22),
+                                const SizedBox(height: 4),
+                                Text(
+                                  option.label,
+                                  textAlign: TextAlign.center,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('ביטול'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('שמירה'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (saved != true || !mounted) {
+      nameController.dispose();
+      rateController.dispose();
+      return;
+    }
+
+    final name = nameController.text.trim();
+    final rate = double.tryParse(
+          rateController.text.trim().replaceAll(',', '.'),
+        ) ??
+        0;
+    nameController.dispose();
+    rateController.dispose();
+
+    if (name.isEmpty || rate <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('יש להזין שם וסכום חיובי')),
+      );
+      return;
+    }
+
+    final updated = IncomeSource(
+      id: existing?.id ?? DateTime.now().microsecondsSinceEpoch.toString(),
+      name: name,
+      iconName: iconName,
+      payType: payType,
+      hourlyRate: payType == 'hourly' ? rate : 0,
+      fixedMonthlyAmount: payType == 'fixedMonthly' ? rate : 0,
+      isActive: true,
+    );
+
+    setState(() {
+      if (existing == null) {
+        _incomeSources = [..._incomeSources, updated];
+      } else {
+        _incomeSources = _incomeSources
+            .map((item) => item.id == existing.id ? updated : item)
+            .toList();
+      }
+    });
+  }
+
+  Future<void> _openFixedMonthlyDialog({
+    FixedMonthlyItem? existing,
+    required String type,
+  }) async {
+    final isAddition = type == 'addition';
+    final nameController = TextEditingController(text: existing?.name ?? '');
+    final amountController = TextEditingController(
+      text: existing == null ? '' : existing.amount.toStringAsFixed(0),
+    );
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          existing == null
+              ? (isAddition ? 'הוספת תוספת שכר' : 'הוספת הוצאה קבועה')
+              : (isAddition ? 'עריכת תוספת שכר' : 'עריכת הוצאה קבועה'),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameController,
+              decoration: InputDecoration(
+                labelText: isAddition ? 'שם התוספת' : 'שם ההוצאה',
+                hintText: isAddition ? 'למשל: נסיעות' : 'למשל: שכירות',
+                border: const OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: amountController,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
+              ],
+              decoration: const InputDecoration(
+                labelText: 'סכום חודשי (₪)',
+                hintText: 'למשל 500',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('ביטול'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('שמירה'),
+          ),
+        ],
+      ),
+    );
+
+    if (saved != true || !mounted) {
+      nameController.dispose();
+      amountController.dispose();
+      return;
+    }
+
+    final name = nameController.text.trim();
+    final amount = double.tryParse(
+          amountController.text.trim().replaceAll(',', '.'),
+        ) ??
+        0.0;
+    nameController.dispose();
+    amountController.dispose();
+
+    if (name.isEmpty || amount <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('יש להזין שם וסכום חיובי')),
+      );
+      return;
+    }
+
+    final updated = FixedMonthlyItem(
+      id: existing?.id ?? DateTime.now().microsecondsSinceEpoch.toString(),
+      name: name,
+      amount: amount,
+      type: type,
+    );
+
+    setState(() {
+      if (existing == null) {
+        _fixedMonthlyItems = [..._fixedMonthlyItems, updated];
+      } else {
+        _fixedMonthlyItems = _fixedMonthlyItems
+            .map((item) => item.id == existing.id ? updated : item)
+            .toList();
+      }
+    });
+  }
+
+  Future<void> _openDeductionDialog({FixedGrossDeduction? existing}) async {
+    final nameController = TextEditingController(text: existing?.name ?? '');
+    final percentController = TextEditingController(
+      text: existing == null
+          ? ''
+          : existing.percentage.toStringAsFixed(
+              existing.percentage.truncateToDouble() == existing.percentage
+                  ? 0
+                  : 1,
+            ),
+    );
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(existing == null ? 'הוספת הורדה' : 'עריכת הורדה'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameController,
+              decoration: const InputDecoration(
+                labelText: 'שם ההורדה',
+                hintText: 'למשל: פנסיה',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: percentController,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
+              ],
+              decoration: const InputDecoration(
+                labelText: 'אחוז מהברוטו',
+                hintText: 'למשל 10',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('ביטול'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('שמירה'),
+          ),
+        ],
+      ),
+    );
+
+    if (saved != true || !mounted) {
+      nameController.dispose();
+      percentController.dispose();
+      return;
+    }
+
+    final name = nameController.text.trim();
+    final percentage = double.tryParse(
+          percentController.text.trim().replaceAll(',', '.'),
+        ) ??
+        0.0;
+    nameController.dispose();
+    percentController.dispose();
+
+    if (name.isEmpty || percentage <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('יש להזין שם ואחוז חיובי')),
+      );
+      return;
+    }
+
+    final updated = FixedGrossDeduction(
+      id: existing?.id ?? DateTime.now().microsecondsSinceEpoch.toString(),
+      name: name,
+      percentage: percentage.clamp(0.01, 100.0),
+    );
+
+    setState(() {
+      if (existing == null) {
+        _grossDeductions = [..._grossDeductions, updated];
+      } else {
+        _grossDeductions = _grossDeductions
+            .map((item) => item.id == existing.id ? updated : item)
+            .toList();
+      }
+    });
   }
 
   Future<void> _openProfessionPicker() async {
