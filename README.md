@@ -1,4 +1,4 @@
-# my_budjet
+# MyBudget
 
 A new Flutter project.
 

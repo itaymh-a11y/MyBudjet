@@ -1,5 +1,5 @@
 {
-  "name": "mybudjet-functions",
+  "name": "mybudget-functions",
   "private": true,
   "main": "index.js",
   "engines": {
