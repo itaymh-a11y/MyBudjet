@@ -168,6 +168,7 @@ class BusinessExpenseEntry {
   final String userId;
   final DateTime date;
   final double amount;
+  final String description;
   final DateTime createdAt;
 
   const BusinessExpenseEntry({
@@ -175,6 +176,7 @@ class BusinessExpenseEntry {
     required this.userId,
     required this.date,
     required this.amount,
+    this.description = '',
     required this.createdAt,
   });
 
@@ -186,6 +188,7 @@ class BusinessExpenseEntry {
       userId: data['userId'] as String? ?? '',
       date: (data['date'] as Timestamp?)?.toDate() ?? DateTime.now(),
       amount: (data['amount'] as num?)?.toDouble() ?? 0.0,
+      description: (data['description'] as String?)?.trim() ?? '',
       createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
     );
   }
@@ -195,6 +198,7 @@ class BusinessExpenseEntry {
       'userId': userId,
       'date': Timestamp.fromDate(date),
       'amount': amount,
+      'description': description,
       'createdAt': Timestamp.fromDate(createdAt),
     };
   }

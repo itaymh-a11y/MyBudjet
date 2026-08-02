@@ -746,7 +746,9 @@ class _PensionScreenState extends ConsumerState<PensionScreen> {
                 margin: const EdgeInsets.only(bottom: 8),
                 child: ListTile(
                   title: Text(
-                    '${entry.amount.toStringAsFixed(0)} ₪',
+                    entry.description.isEmpty
+                        ? '${entry.amount.toStringAsFixed(0)} ₪'
+                        : '${entry.amount.toStringAsFixed(0)} ₪ – ${entry.description}',
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                   subtitle: Text(
@@ -977,7 +979,7 @@ class _PensionScreenState extends ConsumerState<PensionScreen> {
   }
 
   Future<void> _openAddBusinessExpenseDialog(PensionMonthKey key) async {
-    final result = await _openAmountAndDateDialog(title: 'הוספת הוצאה עסקית');
+    final result = await _openBusinessExpenseDialog();
     if (!mounted || result == null) return;
     final auth = ref.read(currentAuthUserProvider);
     if (auth == null) return;
@@ -988,11 +990,92 @@ class _PensionScreenState extends ConsumerState<PensionScreen> {
             userId: auth.uid,
             date: result.$2,
             amount: result.$1,
+            description: result.$3,
             createdAt: DateTime.now(),
           ),
         );
     ref.invalidate(businessExpenseEntriesForMonthProvider(key));
     await _syncSelfEmployedMonthFromManualEntries(key);
+  }
+
+  Future<(double, DateTime, String)?> _openBusinessExpenseDialog() async {
+    final amountController = TextEditingController();
+    final descriptionController = TextEditingController();
+    DateTime selectedDate = DateTime.now();
+    final result = await showDialog<(double, DateTime, String)>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setLocalState) => AlertDialog(
+          title: const Text('הוספת הוצאה עסקית'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: amountController,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(
+                  labelText: 'סכום (₪)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: descriptionController,
+                textInputAction: TextInputAction.done,
+                decoration: const InputDecoration(
+                  labelText: 'תיאור ההוצאה',
+                  hintText: 'למשל: ציוד לפנסיון',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('תאריך'),
+                subtitle: Text(
+                  '${selectedDate.day}.${selectedDate.month}.${selectedDate.year}',
+                ),
+                trailing: const Icon(Icons.calendar_month),
+                onTap: () async {
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: selectedDate,
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime(2100),
+                  );
+                  if (picked == null) return;
+                  setLocalState(() => selectedDate = picked);
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('ביטול'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final parsed = double.tryParse(
+                  amountController.text.trim().replaceAll(',', '.'),
+                );
+                if (parsed == null || parsed <= 0) return;
+                Navigator.of(context).pop((
+                  parsed,
+                  selectedDate,
+                  descriptionController.text.trim(),
+                ));
+              },
+              child: const Text('שמור'),
+            ),
+          ],
+        ),
+      ),
+    );
+    amountController.dispose();
+    descriptionController.dispose();
+    return result;
   }
 
   Future<void> _deleteBusinessIncomeEntry(
