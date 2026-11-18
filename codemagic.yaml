@@ -17,10 +17,6 @@ workflows:
           rm -rf Pods Podfile.lock
           pod install --repo-update
           cd ..
-      - name: Build Android APK (release)
-        script: flutter build apk --release
-      - name: Build Android App Bundle (release)
-        script: flutter build appbundle --release
       - name: Build iOS
         script: |
           set -e
@@ -29,22 +25,4 @@ workflows:
           cd ..
           flutter build ipa --release
     artifacts:
-      - build/app/outputs/flutter-apk/*.apk
-      - build/app/outputs/bundle/release/*.aab
       - build/ios/ipa/*.ipa
-
-  android_release:
-    name: Android Release Build
-    max_build_duration: 60
-    environment:
-      flutter: stable
-    scripts:
-      - name: Get Flutter packages
-        script: flutter pub get
-      - name: Build Android APK (release)
-        script: flutter build apk --release
-      - name: Build Android App Bundle (release)
-        script: flutter build appbundle --release
-    artifacts:
-      - build/app/outputs/flutter-apk/*.apk
-      - build/app/outputs/bundle/release/*.aab
