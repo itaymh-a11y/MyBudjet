@@ -7,6 +7,9 @@ workflows:
       flutter: stable
       xcode: latest
       cocoapods: default
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.example.myBudjet
     scripts:
       - name: Get Flutter packages
         script: flutter pub get
@@ -17,12 +20,13 @@ workflows:
           rm -rf Pods Podfile.lock
           pod install --repo-update
           cd ..
+      - name: Set up code signing on Xcode project
+        script: xcode-project use-profiles
       - name: Build iOS
         script: |
           set -e
-          cd ios
-          pod install --repo-update
-          cd ..
-          flutter build ipa --release
+          flutter build ipa --release \
+            --export-options-plist=/Users/builder/export_options.plist
     artifacts:
       - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
